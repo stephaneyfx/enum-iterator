@@ -40,7 +40,7 @@ pub fn into_enum_iterator(input: TokenStream) -> TokenStream {
     let nb_variants = arms.len();
     let tokens = quote! {
         #[doc = #ty_doc]
-        #[derive(Clone, Copy)]
+        #[derive(Clone, Copy, Debug)]
         #vis struct #iter_ty {
             idx: usize,
         }
