@@ -21,7 +21,7 @@ use std::iter;
 /// When deriving this trait for an enum named `Foo`, the associated type
 /// `Iterator` is a generated type named `FooEnumIterator`. This generated
 /// type has the same visibility as `Foo`. Variants are yielded in the order
-/// they are defined in the enum.
+/// they are defined in the enum. The generated iterator type is `Copy`.
 ///
 /// # Example
 ///
