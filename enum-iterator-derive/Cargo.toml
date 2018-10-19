@@ -1,6 +1,6 @@
 [package]
 name = "enum-iterator-derive"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 description = """Procedural macro to iterate over the variants of a \
     field-less enum"""
