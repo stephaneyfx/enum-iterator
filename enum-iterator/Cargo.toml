@@ -2,6 +2,7 @@
 name = "enum-iterator"
 version = "0.2.3"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
+edition = "2018"
 description = "Tools to iterate over the variants of a field-less enum"
 license = "MIT"
 homepage = "https://github.com/stephaneyfx/enum-iterator"

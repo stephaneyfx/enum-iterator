@@ -5,10 +5,6 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
-#[allow(unused_imports)]
-#[macro_use]
-extern crate enum_iterator_derive;
-
 pub use enum_iterator_derive::*;
 
 use std::iter;
@@ -26,9 +22,6 @@ use std::iter;
 /// # Example
 ///
 /// ```
-/// #[macro_use]
-/// extern crate enum_iterator;
-///
 /// use enum_iterator::IntoEnumIterator;
 ///
 /// #[derive(Clone, IntoEnumIterator, PartialEq)]

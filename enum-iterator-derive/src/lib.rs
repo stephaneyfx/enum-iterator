@@ -8,13 +8,10 @@
 #![deny(warnings)]
 
 extern crate proc_macro;
-extern crate proc_macro2;
-#[macro_use]
-extern crate quote;
-extern crate syn;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
+use quote::quote;
 use syn::{Ident, DeriveInput};
 
 /// Derives `IntoEnumIterator` for field-less enums.
