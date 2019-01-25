@@ -1,6 +1,6 @@
 [package]
 name = "enum-iterator"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 edition = "2018"
 description = "Tools to iterate over the variants of a field-less enum"
@@ -11,4 +11,4 @@ documentation = "https://docs.rs/enum-iterator"
 keywords = ["enum", "variants", "iterator"]
 
 [dependencies]
-enum-iterator-derive = {path = "../enum-iterator-derive", version = "0.2.3"}
+enum-iterator-derive = {path = "../enum-iterator-derive", version = "0.3.0"}
