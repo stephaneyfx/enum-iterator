@@ -1,6 +1,6 @@
 [package]
 name = "enum-iterator-derive"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 edition = "2018"
 description = """Procedural macro to iterate over the variants of a \
@@ -15,6 +15,6 @@ keywords = ["enum", "variants", "iterator"]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "0.4.26"
-quote = "0.6.11"
-syn = "0.15.26"
+proc-macro2 = "1"
+quote = "1"
+syn = "1"
