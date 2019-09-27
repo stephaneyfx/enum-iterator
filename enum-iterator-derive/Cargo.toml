@@ -1,10 +1,9 @@
 [package]
 name = "enum-iterator-derive"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 edition = "2018"
-description = """Procedural macro to iterate over the variants of a \
-    field-less enum"""
+description = "Procedural macro to iterate over the variants of a field-less enum"
 license = "MIT"
 homepage = "https://github.com/stephaneyfx/enum-iterator"
 repository = "https://github.com/stephaneyfx/enum-iterator.git"
