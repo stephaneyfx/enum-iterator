@@ -26,9 +26,9 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
         return Err(Error::GenericsUnsupported.with_tokens(&ast.generics));
     }
     let ty = &ast.ident;
+    let vis = &ast.vis;
     let ty_doc = format!("Iterator over the variants of {}", ty);
     let iter_ty = Ident::new(&(ty.to_string() + "EnumIterator"), Span::call_site());
-    let vis = &ast.vis;
     let variants = match &ast.data {
         syn::Data::Enum(e) => &e.variants,
         _ => return Err(Error::ExpectedEnum.with_tokens(&ast)),
@@ -78,6 +78,11 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
                 #iter_ty { idx: 0 }
             }
         }
+    };
+    let tokens = quote! {
+        const _: () = {
+            #tokens
+        };
     };
     Ok(tokens)
 }

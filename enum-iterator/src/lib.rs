@@ -1,6 +1,8 @@
 // Copyright (C) 2018-2019 Stephane Raux. Distributed under the MIT license.
 
 //! Tools to iterate over the variants of a field-less enum.
+//!
+//! See the `IntoEnumIterator` trait.
 
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -11,13 +13,9 @@ use std::iter;
 
 /// Trait to iterate over the variants of a field-less enum.
 ///
-/// Field-less (a.k.a. C-like) enums are enums whose variants don't have
-/// additional data.
+/// Field-less (a.k.a. C-like) enums are enums whose variants don't have additional data.
 ///
-/// When deriving this trait for an enum named `Foo`, the associated type
-/// `Iterator` is a generated type named `FooEnumIterator`. This generated
-/// type has the same visibility as `Foo`. Variants are yielded in the order
-/// they are defined in the enum. The generated iterator type is `Copy`.
+/// This trait is meant to be derived.
 ///
 /// # Example
 ///
@@ -35,9 +33,10 @@ use std::iter;
 /// ```
 pub trait IntoEnumIterator: Sized {
     /// Type of the iterator over the variants.
-    type Iterator: Iterator<Item = Self> + iter::ExactSizeIterator
-        + iter::FusedIterator;
+    type Iterator: Iterator<Item = Self> + iter::ExactSizeIterator + iter::FusedIterator + Copy;
 
     /// Returns an iterator over the variants.
+    ///
+    /// Variants are yielded in the order they are defined in the enum.
     fn into_enum_iter() -> Self::Iterator;
 }
