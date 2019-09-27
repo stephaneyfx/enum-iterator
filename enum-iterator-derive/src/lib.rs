@@ -1,4 +1,4 @@
-// Copyright (C) 2018 Stephane Raux. Distributed under the MIT license.
+// Copyright (C) 2018-2019 Stephane Raux. Distributed under the MIT license.
 
 //! Procedural macro to derive `IntoEnumIterator` for field-less enums.
 //!
@@ -9,31 +9,39 @@
 
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
-use proc_macro2::Span;
-use quote::quote;
+use proc_macro2::{Span, TokenStream};
+use quote::{quote, ToTokens};
+use std::fmt::{Display, self};
 use syn::{Ident, DeriveInput};
 
 /// Derives `IntoEnumIterator` for field-less enums.
 #[proc_macro_derive(IntoEnumIterator)]
-pub fn into_enum_iterator(input: TokenStream) -> TokenStream {
-    let ast = syn::parse::<DeriveInput>(input).unwrap();
+pub fn into_enum_iterator(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    derive(input).unwrap_or_else(|e| e.to_compile_error()).into()
+}
+
+fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
+    let ast = syn::parse::<DeriveInput>(input)?;
     if !ast.generics.params.is_empty() {
-        panic!("IntoEnumIterator cannot be derived for generic types")
+        return Err(Error::GenericsUnsupported.with_tokens(&ast.generics));
     }
     let ty = &ast.ident;
     let ty_doc = format!("Iterator over the variants of {}", ty);
-    let iter_ty = Ident::new(&(ty.to_string() + "EnumIterator"),
-        Span::call_site());
+    let iter_ty = Ident::new(&(ty.to_string() + "EnumIterator"), Span::call_site());
     let vis = &ast.vis;
     let variants = match &ast.data {
         syn::Data::Enum(e) => &e.variants,
-        _ => abort(),
+        _ => return Err(Error::ExpectedEnum.with_tokens(&ast)),
     };
-    let arms = variants.iter().map(field_less).enumerate()
-        .map(|(idx, id)| quote! {
-            #idx => #ty::#id,
-        });
+    let arms = variants.iter().enumerate()
+        .map(|(idx, v)| {
+            let id = &v.ident;
+            match v.fields {
+                syn::Fields::Unit => Ok(quote! { #idx => #ty::#id, }),
+                _ => Err(Error::ExpectedUnitVariant.with_tokens(v)),
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let nb_variants = arms.len();
     let tokens = quote! {
         #[doc = #ty_doc]
@@ -56,7 +64,7 @@ pub fn into_enum_iterator(input: TokenStream) -> TokenStream {
 
             fn size_hint(&self) -> (usize, ::std::option::Option<usize>) {
                 let n = #nb_variants - self.idx;
-                (n, Some(n))
+                (n, ::std::option::Option::Some(n))
             }
         }
 
@@ -67,21 +75,36 @@ pub fn into_enum_iterator(input: TokenStream) -> TokenStream {
             type Iterator = #iter_ty;
 
             fn into_enum_iter() -> Self::Iterator {
-                #iter_ty {idx: 0}
+                #iter_ty { idx: 0 }
             }
         }
     };
-    tokens.into()
+    Ok(tokens)
 }
 
-fn field_less(v: &syn::Variant) -> &Ident {
-    if let syn::Fields::Unit = v.fields {
-        &v.ident
-    } else {
-        abort()
+#[derive(Debug)]
+enum Error {
+    ExpectedEnum,
+    ExpectedUnitVariant,
+    GenericsUnsupported,
+}
+
+impl Error {
+    fn with_tokens<T: ToTokens>(self, tokens: T) -> syn::Error {
+        syn::Error::new_spanned(tokens, self)
     }
 }
 
-fn abort() -> ! {
-    panic!("IntoEnumIterator can only be derived for field-less enums")
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::ExpectedEnum =>
+                f.write_str("IntoEnumIterator can only be derived for enum types"),
+            Error::ExpectedUnitVariant =>
+                f.write_str("IntoEnumIterator can only be derived for enum types with unit \
+                    variants only"),
+            Error::GenericsUnsupported =>
+                f.write_str("IntoEnumIterator cannot be derived for generic types"),
+        }
+    }
 }
