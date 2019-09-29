@@ -26,6 +26,7 @@ use std::iter;
 /// enum Direction {North, South, West, East}
 ///
 /// fn main() {
+///     assert_eq!(Direction::VARIANT_COUNT, 4);
 ///     assert!(Direction::into_enum_iter().eq([Direction::North,
 ///         Direction::South, Direction::West, Direction::East].iter()
 ///         .cloned()));
@@ -34,6 +35,9 @@ use std::iter;
 pub trait IntoEnumIterator: Sized {
     /// Type of the iterator over the variants.
     type Iterator: Iterator<Item = Self> + iter::ExactSizeIterator + iter::FusedIterator + Copy;
+
+    /// Number of variants.
+    const VARIANT_COUNT: usize;
 
     /// Returns an iterator over the variants.
     ///

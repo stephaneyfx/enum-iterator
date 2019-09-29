@@ -74,6 +74,8 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
         impl ::enum_iterator::IntoEnumIterator for #ty {
             type Iterator = #iter_ty;
 
+            const VARIANT_COUNT: usize = #nb_variants;
+
             fn into_enum_iter() -> Self::Iterator {
                 #iter_ty { idx: 0 }
             }
