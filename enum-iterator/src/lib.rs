@@ -7,6 +7,8 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
+#![no_std]
+
 pub use enum_iterator_derive::IntoEnumIterator;
 
 use core::iter;
