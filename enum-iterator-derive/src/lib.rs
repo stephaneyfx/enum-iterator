@@ -50,26 +50,26 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
             idx: usize,
         }
 
-        impl ::std::iter::Iterator for #iter_ty {
+        impl ::core::iter::Iterator for #iter_ty {
             type Item = #ty;
 
-            fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
                 let id = match self.idx {
                     #(#arms)*
-                    _ => return ::std::option::Option::None,
+                    _ => return ::core::option::Option::None,
                 };
                 self.idx += 1;
-                ::std::option::Option::Some(id)
+                ::core::option::Option::Some(id)
             }
 
-            fn size_hint(&self) -> (usize, ::std::option::Option<usize>) {
+            fn size_hint(&self) -> (usize, ::core::option::Option<usize>) {
                 let n = #nb_variants - self.idx;
-                (n, ::std::option::Option::Some(n))
+                (n, ::core::option::Option::Some(n))
             }
         }
 
-        impl ::std::iter::ExactSizeIterator for #iter_ty {}
-        impl ::std::iter::FusedIterator for #iter_ty {}
+        impl ::core::iter::ExactSizeIterator for #iter_ty {}
+        impl ::core::iter::FusedIterator for #iter_ty {}
 
         impl ::enum_iterator::IntoEnumIterator for #ty {
             type Iterator = #iter_ty;

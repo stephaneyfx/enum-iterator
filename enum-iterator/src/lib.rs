@@ -9,7 +9,7 @@
 
 pub use enum_iterator_derive::IntoEnumIterator;
 
-use std::iter;
+use core::iter;
 
 /// Trait to iterate over the variants of a field-less enum.
 ///
