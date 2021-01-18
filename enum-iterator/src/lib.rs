@@ -36,10 +36,12 @@ use core::iter;
 /// ```
 pub trait IntoEnumIterator: Sized {
     /// Type of the iterator over the variants.
-    type Iterator: Iterator<Item = Self> + iter::ExactSizeIterator + iter::FusedIterator + Copy;
+    type Iterator: Iterator<Item = Self> /*+ iter::ExactSizeIterator*/ + iter::FusedIterator + Copy; //TODO
 
-    /// Number of variants.
-    const VARIANT_COUNT: usize;
+    ///// Number of variants.
+    //const VARIANT_COUNT: usize; //TODO
+    ///// Number of elements.
+    //const ELEMENT_COUNT: usize; //TODO
 
     /// Returns an iterator over the variants.
     ///
