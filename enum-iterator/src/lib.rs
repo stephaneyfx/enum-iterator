@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2019 Stephane Raux. Distributed under the MIT license.
+// Copyright (C) 2018-2019 Stephane Raux. Distributed under the 0BSD license.
 
 //! Tools to iterate over the variants of a field-less enum.
 //!
@@ -6,7 +6,6 @@
 
 #![deny(missing_docs)]
 #![deny(warnings)]
-
 #![no_std]
 
 pub use enum_iterator_derive::IntoEnumIterator;

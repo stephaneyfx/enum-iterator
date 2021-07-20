@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2019 Stephane Raux. Distributed under the MIT license.
+// Copyright (C) 2018-2019 Stephane Raux. Distributed under the 0BSD license.
 
 //! Procedural macro to derive `IntoEnumIterator` for field-less enums.
 //!
@@ -11,13 +11,15 @@ extern crate proc_macro;
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
-use std::fmt::{Display, self};
-use syn::{Ident, DeriveInput};
+use std::fmt::{self, Display};
+use syn::{DeriveInput, Ident};
 
 /// Derives `IntoEnumIterator` for field-less enums.
 #[proc_macro_derive(IntoEnumIterator)]
 pub fn into_enum_iterator(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    derive(input).unwrap_or_else(|e| e.to_compile_error()).into()
+    derive(input)
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
 }
 
 fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
@@ -33,7 +35,9 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
         syn::Data::Enum(e) => &e.variants,
         _ => return Err(Error::ExpectedEnum.with_tokens(&ast)),
     };
-    let arms = variants.iter().enumerate()
+    let arms = variants
+        .iter()
+        .enumerate()
         .map(|(idx, v)| {
             let id = &v.ident;
             match v.fields {
@@ -105,13 +109,16 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::ExpectedEnum =>
-                f.write_str("IntoEnumIterator can only be derived for enum types"),
-            Error::ExpectedUnitVariant =>
-                f.write_str("IntoEnumIterator can only be derived for enum types with unit \
-                    variants only"),
-            Error::GenericsUnsupported =>
-                f.write_str("IntoEnumIterator cannot be derived for generic types"),
+            Error::ExpectedEnum => {
+                f.write_str("IntoEnumIterator can only be derived for enum types")
+            }
+            Error::ExpectedUnitVariant => f.write_str(
+                "IntoEnumIterator can only be derived for enum types with unit \
+                    variants only",
+            ),
+            Error::GenericsUnsupported => {
+                f.write_str("IntoEnumIterator cannot be derived for generic types")
+            }
         }
     }
 }
