@@ -1,8 +1,29 @@
-// Copyright (C) 2018-2019 Stephane Raux. Distributed under the 0BSD license.
+// Copyright (C) 2018-2021 Stephane Raux. Distributed under the 0BSD license.
 
+//! # Overview
+//! - [📦 crates.io](https://crates.io/crates/enum-iterator)
+//! - [📖 Documentation](https://docs.rs/enum-iterator)
+//! - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
+//!
 //! Tools to iterate over the variants of a field-less enum.
 //!
-//! See the `IntoEnumIterator` trait.
+//! See the [`IntoEnumIterator`] trait.
+//!
+//! # Example
+//! ```
+//! use enum_iterator::IntoEnumIterator;
+//!
+//! #[derive(Debug, IntoEnumIterator, PartialEq)]
+//! enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+//!
+//! fn main() {
+//!     assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
+//!     assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
+//! }
+//! ```
+//!
+//! # Contribute
+//! All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
 
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -24,7 +45,7 @@ use core::iter;
 /// use enum_iterator::IntoEnumIterator;
 ///
 /// #[derive(Clone, IntoEnumIterator, PartialEq)]
-/// enum Direction {North, South, West, East}
+/// enum Direction { North, South, West, East }
 ///
 /// fn main() {
 ///     assert_eq!(Direction::VARIANT_COUNT, 4);
