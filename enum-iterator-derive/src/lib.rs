@@ -1,11 +1,11 @@
-// Copyright (C) 2018-2021 Stephane Raux. Distributed under the 0BSD license.
+// Copyright (C) 2018-2022 Stephane Raux. Distributed under the 0BSD license.
 
 //! # Overview
 //! - [📦 crates.io](https://crates.io/crates/enum-iterator-derive)
 //! - [📖 Documentation](https://docs.rs/enum-iterator-derive)
 //! - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 //!
-//! Procedural macro to derive `IntoEnumIterator` for field-less enums.
+//! Procedural macro to derive `IntoEnumIterator`.
 //!
 //! See crate [enum-iterator](https://docs.rs/enum-iterator) for details.
 //!
@@ -19,10 +19,16 @@ extern crate proc_macro;
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
-use std::fmt::{self, Display};
-use syn::{DeriveInput, Ident};
+use std::{
+    fmt::{self, Display},
+    iter::DoubleEndedIterator,
+};
+use syn::{
+    punctuated::Punctuated, token::Comma, DeriveInput, Field, Fields, FieldsNamed, FieldsUnnamed,
+    Ident, Member, Variant, Visibility,
+};
 
-/// Derives `IntoEnumIterator` for field-less enums.
+/// Derives `IntoEnumIterator`.
 #[proc_macro_derive(IntoEnumIterator)]
 pub fn into_enum_iterator(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     derive(input)
@@ -33,79 +39,263 @@ pub fn into_enum_iterator(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
     let ast = syn::parse::<DeriveInput>(input)?;
     if !ast.generics.params.is_empty() {
-        return Err(Error::GenericsUnsupported.with_tokens(&ast.generics));
+        return Err(Error::UnsupportedGenerics.with_tokens(&ast.generics));
     }
     let ty = &ast.ident;
     let vis = &ast.vis;
-    let ty_doc = format!("Iterator over the variants of {}", ty);
-    let iter_ty = Ident::new(&(ty.to_string() + "EnumIterator"), Span::call_site());
-    let variants = match &ast.data {
-        syn::Data::Enum(e) => &e.variants,
-        _ => return Err(Error::ExpectedEnum.with_tokens(&ast)),
-    };
-    let arms = variants
-        .iter()
-        .enumerate()
-        .map(|(idx, v)| {
-            let id = &v.ident;
-            match v.fields {
-                syn::Fields::Unit => Ok(quote! { #idx => #ty::#id, }),
-                _ => Err(Error::ExpectedUnitVariant.with_tokens(v)),
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let nb_variants = arms.len();
+    match &ast.data {
+        syn::Data::Struct(s) => derive_for_struct(vis, ty, &s.fields),
+        syn::Data::Enum(e) => derive_for_enum(vis, ty, &e.variants),
+        syn::Data::Union(_) => Err(Error::UnsupportedUnion.with_tokens(&ast)),
+    }
+}
+
+fn derive_for_struct(
+    vis: &Visibility,
+    ty: &Ident,
+    fields: &Fields,
+) -> Result<TokenStream, syn::Error> {
+    let ty_doc = format!("Iterator over values of type {ty}");
+    let iter_ty = Ident::new(&format!("{ty}EnumIterator"), Span::call_site());
+    let tuple_ty = tuple_type(fields);
+    let pattern = tuple_pattern(fields.len());
+    let assignments = field_assignments(fields);
     let tokens = quote! {
         #[doc = #ty_doc]
-        #[derive(Clone, Copy, Debug)]
-        #vis struct #iter_ty {
-            idx: usize,
-        }
+        #[derive(Clone)]
+        #vis struct #iter_ty(<#tuple_ty as ::enum_iterator::IntoEnumIterator>::Iterator);
 
         impl ::core::iter::Iterator for #iter_ty {
             type Item = #ty;
 
             fn next(&mut self) -> ::core::option::Option<Self::Item> {
-                let id = match self.idx {
-                    #(#arms)*
-                    _ => return ::core::option::Option::None,
-                };
-                self.idx += 1;
-                ::core::option::Option::Some(id)
-            }
-
-            fn size_hint(&self) -> (usize, ::core::option::Option<usize>) {
-                let n = #nb_variants - self.idx;
-                (n, ::core::option::Option::Some(n))
+                let #pattern = self.0.next()?;
+                Some(#ty {
+                    #assignments
+                })
             }
         }
-
-        impl ::core::iter::ExactSizeIterator for #iter_ty {}
-        impl ::core::iter::FusedIterator for #iter_ty {}
 
         impl ::enum_iterator::IntoEnumIterator for #ty {
             type Iterator = #iter_ty;
 
-            const VARIANT_COUNT: usize = #nb_variants;
+            const ITEM_COUNT: usize = <#tuple_ty as ::enum_iterator::IntoEnumIterator>::ITEM_COUNT;
 
             fn into_enum_iter() -> Self::Iterator {
-                #iter_ty { idx: 0 }
+                #iter_ty(<#tuple_ty as ::enum_iterator::IntoEnumIterator>::into_enum_iter())
             }
         }
     };
-    let tokens = quote! {
-        const _: () = {
-            #tokens
-        };
+    Ok(isolate_code(tokens))
+}
+
+fn derive_for_enum(
+    vis: &Visibility,
+    ty: &Ident,
+    variants: &Punctuated<Variant, Comma>,
+) -> Result<TokenStream, syn::Error> {
+    let ty_doc = format!("Iterator over values of type {ty}");
+    let iter_ty = Ident::new(&format!("{ty}EnumIterator"), Span::call_site());
+    let iter_inner_ty = Ident::new(&format!("{ty}EnumIteratorInner"), Span::call_site());
+    let iter_variants = build_iterator_variants(variants);
+    let arms = build_arms(ty, &iter_inner_ty, variants);
+    let lengths = build_length_expr(variants);
+    let first = match variants.first() {
+        Some(first) => init_variant(&iter_inner_ty, first),
+        None => quote! { loop {} },
     };
-    Ok(tokens)
+    let tokens = quote! {
+        #[derive(Clone)]
+        enum #iter_inner_ty {
+            #(#iter_variants,)*
+        }
+
+        #[doc = #ty_doc]
+        #[derive(Clone)]
+        #vis struct #iter_ty(#iter_inner_ty);
+
+        impl ::core::iter::Iterator for #iter_ty {
+            type Item = #ty;
+
+            fn next(&mut self) -> ::core::option::Option<Self::Item> {
+                loop {
+                    match &mut self.0 {
+                        #(#arms)*
+                    }
+                }
+            }
+        }
+
+        impl ::enum_iterator::IntoEnumIterator for #ty {
+            type Iterator = #iter_ty;
+
+            const ITEM_COUNT: usize = 0 #(+ #lengths)*;
+
+            fn into_enum_iter() -> Self::Iterator {
+                #iter_ty(#first)
+            }
+        }
+    };
+    Ok(isolate_code(tokens))
+}
+
+fn build_length_expr(variants: &Punctuated<Variant, Comma>) -> Vec<TokenStream> {
+    variants
+        .iter()
+        .map(|variant| match &variant.fields {
+            Fields::Named(FieldsNamed { named: fields, .. })
+            | Fields::Unnamed(FieldsUnnamed {
+                unnamed: fields, ..
+            }) => {
+                let ty = tuple_type(fields);
+                quote! {
+                    <#ty as ::enum_iterator::IntoEnumIterator>::ITEM_COUNT
+                }
+            }
+            Fields::Unit => quote! { 1 },
+        })
+        .collect()
+}
+
+fn build_iterator_variants(variants: &Punctuated<Variant, Comma>) -> Vec<TokenStream> {
+    variants
+        .iter()
+        .map(|variant| {
+            let id = &variant.ident;
+            match &variant.fields {
+                Fields::Named(FieldsNamed { named: fields, .. })
+                | Fields::Unnamed(FieldsUnnamed {
+                    unnamed: fields, ..
+                }) => {
+                    let ty = tuple_type(fields);
+                    quote! {
+                        #id(<#ty as ::enum_iterator::IntoEnumIterator>::Iterator)
+                    }
+                }
+                Fields::Unit => quote! { #id },
+            }
+        })
+        .chain(Some(quote! { __EnumIteratorEnd }))
+        .collect()
+}
+
+fn tuple_type<'a, I>(fields: I) -> TokenStream
+where
+    I: IntoIterator<Item = &'a Field>,
+    I::IntoIter: DoubleEndedIterator,
+{
+    fields
+        .into_iter()
+        .rev()
+        .map(|field| &field.ty)
+        .fold(quote! {}, |acc, ty| {
+            quote! {
+                (#ty, #acc)
+            }
+        })
+}
+
+fn init_variant(iter_inner_ty: &Ident, variant: &Variant) -> TokenStream {
+    let id = &variant.ident;
+    match &variant.fields {
+        Fields::Named(FieldsNamed { named: fields, .. })
+        | Fields::Unnamed(FieldsUnnamed {
+            unnamed: fields, ..
+        }) => {
+            let ty = tuple_type(fields);
+            quote! {
+                #iter_inner_ty::#id(
+                    <#ty as ::enum_iterator::IntoEnumIterator>::into_enum_iter(),
+                )
+            }
+        }
+        Fields::Unit => quote! { #iter_inner_ty::#id },
+    }
+}
+
+fn tuple_pattern(len: usize) -> TokenStream {
+    (0..len).rev().fold(quote! {}, |acc, i| {
+        let id = Ident::new(&format!("x{i}"), Span::call_site());
+        quote! { (#id, #acc) }
+    })
+}
+
+fn field_assignments<'a, I>(fields: I) -> TokenStream
+where
+    I: IntoIterator<Item = &'a Field>,
+{
+    let assignments = fields.into_iter().enumerate().map(|(i, field)| {
+        let field_id = field.ident.clone().map(Member::Named).unwrap_or_else(|| {
+            Member::Unnamed(syn::Index {
+                index: i.try_into().unwrap(),
+                span: Span::call_site(),
+            })
+        });
+        let value = Ident::new(&format!("x{i}"), Span::call_site());
+        quote! { #field_id: #value }
+    });
+    quote! { #(#assignments,)* }
+}
+
+fn build_arms(
+    ty: &Ident,
+    iter_inner_ty: &Ident,
+    variants: &Punctuated<Variant, Comma>,
+) -> Vec<TokenStream> {
+    let next_variants = variants
+        .iter()
+        .skip(1)
+        .map(|variant| init_variant(iter_inner_ty, variant))
+        .chain(Some(quote! { #iter_inner_ty::__EnumIteratorEnd }));
+    variants
+        .iter()
+        .zip(next_variants)
+        .map(|(variant, next)| {
+            let id = &variant.ident;
+            match &variant.fields {
+                Fields::Named(FieldsNamed { named: fields, .. })
+                | Fields::Unnamed(FieldsUnnamed {
+                    unnamed: fields, ..
+                }) => {
+                    let pattern = tuple_pattern(fields.len());
+                    let assignments = field_assignments(fields);
+                    quote! {
+                        #iter_inner_ty::#id(inner) => match ::core::iter::Iterator::next(inner) {
+                            ::core::option::Option::Some(#pattern) => {
+                                break ::core::option::Option::Some(#ty::#id {
+                                    #assignments
+                                })
+                            }
+                            ::core::option::Option::None => self.0 = #next,
+                        }
+                    }
+                }
+                Fields::Unit => quote! {
+                    #iter_inner_ty::#id => {
+                        self.0 = #next;
+                        break ::core::option::Option::Some(#ty::#id);
+                    }
+                },
+            }
+        })
+        .chain(Some(
+            quote! { #iter_inner_ty::__EnumIteratorEnd => break None, },
+        ))
+        .collect()
+}
+
+fn isolate_code(code: TokenStream) -> TokenStream {
+    quote! {
+        const _: () = {
+            #code
+        };
+    }
 }
 
 #[derive(Debug)]
 enum Error {
-    ExpectedEnum,
-    ExpectedUnitVariant,
-    GenericsUnsupported,
+    UnsupportedUnion,
+    UnsupportedGenerics,
 }
 
 impl Error {
@@ -117,14 +307,10 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::ExpectedEnum => {
-                f.write_str("IntoEnumIterator can only be derived for enum types")
+            Error::UnsupportedUnion => {
+                f.write_str("IntoEnumIterator cannot be derived for union types")
             }
-            Error::ExpectedUnitVariant => f.write_str(
-                "IntoEnumIterator can only be derived for enum types with unit \
-                    variants only",
-            ),
-            Error::GenericsUnsupported => {
+            Error::UnsupportedGenerics => {
                 f.write_str("IntoEnumIterator cannot be derived for generic types")
             }
         }
