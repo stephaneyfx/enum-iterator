@@ -31,11 +31,23 @@ pub use enum_iterator_derive::IntoEnumIterator;
 
 /// Trait to iterate over the values of a type.
 ///
-/// # Derivation examples
+/// # Derivation
 ///
-/// `IntoEnumIterator` can be derived for `enum` and `struct` types.
+/// `IntoEnumIterator` can be derived for `enum` and `struct` types. Specifically, it can be derived
+/// for:
+/// - Enumerations whose variants meet one of the following criteria:
+///   - The variant does not have fields.
+///   - The variant has fields such that:
+///     - Every field has a type that implements `IntoEnumIterator`.
+///     - Every field but the first one has a type that implements `Clone`.
+/// - Structures whose fields are such that:
+///     - Every field has a type that implements `IntoEnumIterator`.
+///     - Every field but the first one has a type that implements `Clone`.
 ///
-/// It can be derived for C-like enumerations whose variants are all unit variants.
+/// The number of values of the type must not exceed `usize::MAX`.
+///
+/// # Examples
+/// ## C-like enumeration
 ///
 /// ```
 /// use enum_iterator::IntoEnumIterator;
@@ -52,7 +64,7 @@ pub use enum_iterator_derive::IntoEnumIterator;
 /// ]));
 /// ```
 ///
-/// It can be derived when variants have fields whose types implement `IntoEnumIterator`.
+/// ## Enumeration with data
 ///
 /// ```
 /// use enum_iterator::IntoEnumIterator;
@@ -87,7 +99,7 @@ pub use enum_iterator_derive::IntoEnumIterator;
 /// ]));
 /// ```
 ///
-/// It can be derived for structures.
+/// ## Structure
 ///
 /// ```
 /// use enum_iterator::IntoEnumIterator;
