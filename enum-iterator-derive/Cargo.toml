@@ -1,6 +1,6 @@
 [package]
 name = "enum-iterator-derive"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 edition = "2021"
 description = "Procedural macro to derive IntoEnumIterator"
