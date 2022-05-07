@@ -39,10 +39,10 @@ pub use enum_iterator_derive::IntoEnumIterator;
 ///   - The variant does not have fields.
 ///   - The variant has fields such that:
 ///     - Every field has a type that implements `IntoEnumIterator`.
-///     - Every field but the first one has a type that implements `Clone`.
+///     - Every field but the last one has a type that implements `Clone`.
 /// - Structures whose fields are such that:
 ///     - Every field has a type that implements `IntoEnumIterator`.
-///     - Every field but the first one has a type that implements `Clone`.
+///     - Every field but the last one has a type that implements `Clone`.
 ///
 /// The number of values of the type must not exceed `usize::MAX`.
 ///
