@@ -9,7 +9,7 @@
 //!
 //! See the [`IntoEnumIterator`] trait.
 //!
-//! # Example
+//! # Examples
 //! ```
 //! use enum_iterator::IntoEnumIterator;
 //!
@@ -18,6 +18,19 @@
 //!
 //! assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
 //! assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
+//! ```
+//!
+//! ```
+//! use enum_iterator::IntoEnumIterator;
+//!
+//! #[derive(Debug, IntoEnumIterator, PartialEq)]
+//! struct Foo {
+//!     a: bool,
+//!     b: u8,
+//! }
+//!
+//! assert_eq!(Foo::into_enum_iter().next(), Some(Foo { a: false, b: 0 }));
+//! assert_eq!(Foo::into_enum_iter().last(), Some(Foo { a: true, b: 255 }));
 //! ```
 //!
 //! # Contribute

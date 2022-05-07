@@ -9,7 +9,7 @@ Tools to iterate over the values of a type.
 
 See the [`IntoEnumIterator`] trait.
 
-# Example
+# Examples
 ```rust
 use enum_iterator::IntoEnumIterator;
 
@@ -18,6 +18,19 @@ enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 
 assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
 assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
+```
+
+```rust
+use enum_iterator::IntoEnumIterator;
+
+#[derive(Debug, IntoEnumIterator, PartialEq)]
+struct Foo {
+    a: bool,
+    b: u8,
+}
+
+assert_eq!(Foo::into_enum_iter().next(), Some(Foo { a: false, b: 0 }));
+assert_eq!(Foo::into_enum_iter().last(), Some(Foo { a: true, b: 255 }));
 ```
 
 # Contribute
