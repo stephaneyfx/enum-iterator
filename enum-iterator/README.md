@@ -5,9 +5,9 @@
 - [📖 Documentation](https://docs.rs/enum-iterator)
 - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 
-Tools to iterate over the variants of a field-less enum.
+Tools to iterate over the values of a type.
 
-See the `IntoEnumIterator` trait.
+See the [`IntoEnumIterator`] trait.
 
 # Example
 ```rust
@@ -16,10 +16,8 @@ use enum_iterator::IntoEnumIterator;
 #[derive(Debug, IntoEnumIterator, PartialEq)]
 enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 
-fn main() {
-    assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
-    assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
-}
+assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
+assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
 ```
 
 # Contribute
