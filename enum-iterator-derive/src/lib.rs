@@ -74,7 +74,7 @@ fn derive_for_struct(
         });
         clause.predicates.extend(
             trait_bounds(group_type_requirements(
-                fields.iter().zip(tuple_type_requirements()),
+                fields.iter().rev().zip(tuple_type_requirements()),
             ))
             .map(WherePredicate::Type),
         );
@@ -141,7 +141,7 @@ fn derive_for_enum(
         });
         clause.predicates.extend(
             trait_bounds(group_type_requirements(variants.iter().flat_map(
-                |variant| variant.fields.iter().zip(tuple_type_requirements()),
+                |variant| variant.fields.iter().rev().zip(tuple_type_requirements()),
             )))
             .map(WherePredicate::Type),
         );

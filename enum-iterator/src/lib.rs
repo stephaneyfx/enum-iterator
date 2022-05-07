@@ -93,8 +93,8 @@ pub use enum_iterator_derive::IntoEnumIterator;
 ///     Action::Move(Direction::East),
 ///     Action::Jump,
 ///     Action::Talk { greeting: Greeting::Hi, loud: false },
-///     Action::Talk { greeting: Greeting::Bye, loud: false },
 ///     Action::Talk { greeting: Greeting::Hi, loud: true },
+///     Action::Talk { greeting: Greeting::Bye, loud: false },
 ///     Action::Talk { greeting: Greeting::Bye, loud: true },
 /// ]));
 /// ```
@@ -125,8 +125,8 @@ pub use enum_iterator_derive::IntoEnumIterator;
 /// assert_eq!(Limb::ITEM_COUNT, 4);
 /// assert!(Limb::into_enum_iter().eq([
 ///     Limb { kind: LimbKind::Arm, side: Side::Left },
-///     Limb { kind: LimbKind::Leg, side: Side::Left },
 ///     Limb { kind: LimbKind::Arm, side: Side::Right },
+///     Limb { kind: LimbKind::Leg, side: Side::Left },
 ///     Limb { kind: LimbKind::Leg, side: Side::Right },
 /// ]));
 /// ```
@@ -218,12 +218,20 @@ impl<T: IntoEnumIterator> IntoEnumIterator for Option<T> {
 }
 
 macro_rules! tuple_next {
+    (reverse $this:ident, $carry:expr, $($values:expr,)* @ $($reversed:ty,)* @ $head:ty, $($tail:ty,)*) => {
+        tuple_next!(reverse $this, $carry, $($values,)* @ $head, $($reversed,)* @ $($tail,)*)
+    };
+
+    (reverse $this:ident, $carry:expr, $($values:expr,)* @ $($reversed:ty,)* @) => {
+        tuple_next!($this, $carry, $($values,)* @ _, _, @ $($reversed,)*)
+    };
+
     ($this:ident, $carry:expr, $($values:expr,)* @ $($placeholders:pat,)* @) => {
         Some(($($values,)*)).filter(|_| !$carry)
     };
 
     ($this:ident, $carry:expr, $($values:expr,)* @ $($placeholders:pat,)* @ $head:ty, $($tail:ty,)*) => {{
-        let ($($placeholders,)* cache, it, ..) = $this;
+        let (.., cache, it, $($placeholders,)*) = $this;
         let (x, new_carry) = match cache.as_ref().filter(|_| !$carry).cloned() {
             Some(x) => Some((x, false)),
             None => {
@@ -238,54 +246,55 @@ macro_rules! tuple_next {
                 Some((x, new_carry))
             }
         }?;
-        tuple_next!($this, new_carry, $($values,)* x, @ $($placeholders,)* _, _, @ $($tail,)*)
+        tuple_next!($this, new_carry, x, $($values,)* @ $($placeholders,)* _, _, @ $($tail,)*)
     }};
 }
 
 macro_rules! impl_tuple {
-    ($head:ident, $($tail:ident,)*) => {
-        impl<$head, $($tail),*> IntoEnumIterator for ($head, $($tail,)*)
+    ($($tys:ident,)* @ $last:ident) => {
+        impl<$($tys,)* $last> IntoEnumIterator for ($($tys,)* $last,)
         where
-            $head: IntoEnumIterator,
-            $($tail: IntoEnumIterator + Clone),*
+            $($tys: IntoEnumIterator + Clone,)*
+            $last: IntoEnumIterator,
         {
             type Iterator = TupleEnumIterator<(
-                core::marker::PhantomData<$head>,
-                <$head as IntoEnumIterator>::Iterator,
-                $(Option<$tail>, <$tail as IntoEnumIterator>::Iterator,)*
+                $(Option<$tys>, <$tys as IntoEnumIterator>::Iterator,)*
+                core::marker::PhantomData<$last>,
+                <$last as IntoEnumIterator>::Iterator,
             )>;
-            const ITEM_COUNT: usize = <$head as IntoEnumIterator>::ITEM_COUNT $(* <$tail as IntoEnumIterator>::ITEM_COUNT)*;
+            const ITEM_COUNT: usize = $(<$tys as IntoEnumIterator>::ITEM_COUNT *)* <$last as IntoEnumIterator>::ITEM_COUNT;
 
             fn into_enum_iter() -> Self::Iterator {
                 TupleEnumIterator((
+                    $(None, <$tys as IntoEnumIterator>::into_enum_iter(),)*
                     core::marker::PhantomData,
-                    <$head as IntoEnumIterator>::into_enum_iter(),
-                    $(None, <$tail as IntoEnumIterator>::into_enum_iter(),)*
+                    <$last as IntoEnumIterator>::into_enum_iter(),
                 ))
             }
         }
 
-        impl<$head, $($tail),*> Iterator for TupleEnumIterator<(
-            core::marker::PhantomData<$head>,
-            <$head as IntoEnumIterator>::Iterator,
-            $(Option<$tail>, <$tail as IntoEnumIterator>::Iterator,)*
+        impl<$($tys,)* $last> Iterator for TupleEnumIterator<(
+            $(Option<$tys>, <$tys as IntoEnumIterator>::Iterator,)*
+            core::marker::PhantomData<$last>,
+            <$last as IntoEnumIterator>::Iterator,
         )>
         where
-            $head: IntoEnumIterator,
-            $($tail: IntoEnumIterator + Clone),*
+            $($tys: IntoEnumIterator + Clone,)*
+            $last: IntoEnumIterator,
         {
-            type Item = ($head, $($tail,)*);
+            type Item = ($($tys,)* $last,);
 
             fn next(&mut self) -> Option<Self::Item> {
                 let inner = &mut self.0;
-                let (x, carry) = match inner.1.next() {
+                let (.., it) = inner;
+                let (x, carry) = match it.next() {
                     Some(x) => Some((x, false)),
                     None => {
-                        inner.1 = <$head as IntoEnumIterator>::into_enum_iter();
-                        inner.1.next().map(|x| (x, true))
+                        *it = <$last as IntoEnumIterator>::into_enum_iter();
+                        it.next().map(|x| (x, true))
                     }
                 }?;
-                tuple_next!(inner, carry, x, @ _, _, @ $($tail,)*)
+                tuple_next!(reverse inner, carry, x, @ @ $($tys,)*)
             }
         }
     };
@@ -296,7 +305,7 @@ macro_rules! impl_tuples {
         impl_tuples!(@ $($types,)*);
     };
     ($($types:ident,)* @ $head:ident, $($tail:ident,)*) => {
-        impl_tuple!($($types,)* $head,);
+        impl_tuple!($($types,)* @ $head);
         impl_tuples!($($types,)* $head, @ $($tail,)*);
     };
     ($($types:ident,)* @) => {};
@@ -419,5 +428,17 @@ mod tests {
     #[test]
     fn check_option_items() {
         assert!(Option::<bool>::into_enum_iter().eq([None, Some(false), Some(true)]));
+    }
+
+    #[test]
+    fn tuple_fields_vary_from_right_to_left() {
+        assert!(<(Option<bool>, bool)>::into_enum_iter().eq([
+            (None, false),
+            (None, true),
+            (Some(false), false),
+            (Some(false), true),
+            (Some(true), false),
+            (Some(true), true),
+        ]));
     }
 }
