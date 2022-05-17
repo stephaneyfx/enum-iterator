@@ -7,30 +7,50 @@
 
 Tools to iterate over the values of a type.
 
-See the [`IntoEnumIterator`] trait.
-
 # Examples
 ```rust
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::{all, cardinality, first, last, next, previous, reverse_all, Sequence};
 
-#[derive(Debug, IntoEnumIterator, PartialEq)]
+#[derive(Debug, PartialEq, Sequence)]
 enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 
-assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
-assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
+assert_eq!(cardinality::<Day>(), 7);
+assert_eq!(all::<Day>().collect::<Vec<_>>(), [
+    Day::Monday,
+    Day::Tuesday,
+    Day::Wednesday,
+    Day::Thursday,
+    Day::Friday,
+    Day::Saturday,
+    Day::Sunday,
+]);
+assert_eq!(first::<Day>(), Some(Day::Monday));
+assert_eq!(last::<Day>(), Some(Day::Sunday));
+assert_eq!(next(&Day::Tuesday), Some(Day::Wednesday));
+assert_eq!(previous(&Day::Wednesday), Some(Day::Tuesday));
+assert_eq!(reverse_all::<Day>().collect::<Vec<_>>(), [
+    Day::Sunday,
+    Day::Saturday,
+    Day::Friday,
+    Day::Thursday,
+    Day::Wednesday,
+    Day::Tuesday,
+    Day::Monday,
+]);
 ```
 
 ```rust
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::{cardinality, first, last, Sequence};
 
-#[derive(Debug, IntoEnumIterator, PartialEq)]
+#[derive(Debug, PartialEq, Sequence)]
 struct Foo {
     a: bool,
     b: u8,
 }
 
-assert_eq!(Foo::into_enum_iter().next(), Some(Foo { a: false, b: 0 }));
-assert_eq!(Foo::into_enum_iter().last(), Some(Foo { a: true, b: 255 }));
+assert_eq!(cardinality::<Foo>(), 512);
+assert_eq!(first::<Foo>(), Some(Foo { a: false, b: 0 }));
+assert_eq!(last::<Foo>(), Some(Foo { a: true, b: 255 }));
 ```
 
 # Contribute

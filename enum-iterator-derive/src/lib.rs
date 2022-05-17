@@ -5,9 +5,9 @@
 //! - [📖 Documentation](https://docs.rs/enum-iterator-derive)
 //! - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 //!
-//! Procedural macro to derive `IntoEnumIterator`.
+//! Procedural macro to derive `Sequence`.
 //!
-//! See crate [enum-iterator](https://docs.rs/enum-iterator) for details.
+//! See crate [`enum-iterator`](https://docs.rs/enum-iterator) for details.
 //!
 //! # Contribute
 //! All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
@@ -22,17 +22,17 @@ use quote::{quote, ToTokens};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
-    iter::{self, once, repeat, DoubleEndedIterator},
+    iter::{self, once, repeat},
 };
 use syn::{
-    punctuated::Punctuated, token::Comma, DeriveInput, Field, Fields, FieldsNamed, FieldsUnnamed,
-    Generics, Ident, Member, Path, PathSegment, PredicateType, TraitBound, TraitBoundModifier,
-    Type, TypeParamBound, Variant, Visibility, WhereClause, WherePredicate,
+    punctuated::Punctuated, token::Comma, DeriveInput, Field, Fields, Generics, Ident, Member,
+    Path, PathSegment, PredicateType, TraitBound, TraitBoundModifier, Type, TypeParamBound,
+    Variant, WhereClause, WherePredicate,
 };
 
-/// Derives `IntoEnumIterator`.
-#[proc_macro_derive(IntoEnumIterator)]
-pub fn into_enum_iterator(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// Derives `Sequence`.
+#[proc_macro_derive(Sequence)]
+pub fn derive_sequence(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     derive(input)
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
@@ -44,26 +44,24 @@ fn derive(input: proc_macro::TokenStream) -> Result<TokenStream, syn::Error> {
 
 fn derive_for_ast(ast: DeriveInput) -> Result<TokenStream, syn::Error> {
     let ty = &ast.ident;
-    let vis = &ast.vis;
     let generics = &ast.generics;
     match &ast.data {
-        syn::Data::Struct(s) => derive_for_struct(vis, ty, generics, &s.fields),
-        syn::Data::Enum(e) => derive_for_enum(vis, ty, generics, &e.variants),
+        syn::Data::Struct(s) => derive_for_struct(ty, generics, &s.fields),
+        syn::Data::Enum(e) => derive_for_enum(ty, generics, &e.variants),
         syn::Data::Union(_) => Err(Error::UnsupportedUnion.with_tokens(&ast)),
     }
 }
 
 fn derive_for_struct(
-    vis: &Visibility,
     ty: &Ident,
     generics: &Generics,
     fields: &Fields,
 ) -> Result<TokenStream, syn::Error> {
-    let ty_doc = format!("Iterator over values of type {ty}");
-    let iter_ty = Ident::new(&format!("{ty}EnumIterator"), Span::call_site());
-    let tuple_ty = tuple_type(fields);
-    let pattern = tuple_pattern(fields.len());
-    let assignments = field_assignments(fields);
+    let cardinality = tuple_cardinality(fields);
+    let first = init_fields(fields, Direction::Forward);
+    let last = init_fields(fields, Direction::Backward);
+    let next_body = advance_struct(ty, fields, Direction::Forward);
+    let previous_body = advance_struct(ty, fields, Direction::Backward);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let where_clause = if generics.params.is_empty() {
         where_clause.cloned()
@@ -81,56 +79,39 @@ fn derive_for_struct(
         Some(clause)
     };
     let tokens = quote! {
-        #[doc = #ty_doc]
-        #vis struct #iter_ty #impl_generics(<#tuple_ty as ::enum_iterator::IntoEnumIterator>::Iterator) #where_clause;
+        impl #impl_generics ::enum_iterator::Sequence for #ty #ty_generics #where_clause {
+            const CARDINALITY: usize = #cardinality;
 
-        impl #impl_generics ::core::clone::Clone for #iter_ty #ty_generics #where_clause {
-            fn clone(&self) -> Self {
-                Self(::core::clone::Clone::clone(&self.0))
+            fn next(&self) -> ::core::option::Option<Self> {
+                #next_body
             }
-        }
 
-        impl #impl_generics ::core::iter::Iterator for #iter_ty #ty_generics #where_clause {
-            type Item = #ty #ty_generics;
-
-            fn next(&mut self) -> ::core::option::Option<Self::Item> {
-                let #pattern = self.0.next()?;
-                Some(#ty {
-                    #assignments
-                })
+            fn previous(&self) -> ::core::option::Option<Self> {
+                #previous_body
             }
-        }
 
-        impl #impl_generics ::enum_iterator::IntoEnumIterator for #ty #ty_generics #where_clause {
-            type Iterator = #iter_ty #ty_generics;
+            fn first() -> ::core::option::Option<Self> {
+                ::core::option::Option::Some(#ty { #first })
+            }
 
-            const ITEM_COUNT: usize = <#tuple_ty as ::enum_iterator::IntoEnumIterator>::ITEM_COUNT;
-
-            fn into_enum_iter() -> Self::Iterator {
-                #iter_ty(<#tuple_ty as ::enum_iterator::IntoEnumIterator>::into_enum_iter())
+            fn last() -> ::core::option::Option<Self> {
+                ::core::option::Option::Some(#ty { #last })
             }
         }
     };
-    Ok(isolate_code(tokens))
+    Ok(tokens)
 }
 
 fn derive_for_enum(
-    vis: &Visibility,
     ty: &Ident,
     generics: &Generics,
     variants: &Punctuated<Variant, Comma>,
 ) -> Result<TokenStream, syn::Error> {
-    let ty_doc = format!("Iterator over values of type {ty}");
-    let iter_ty = Ident::new(&format!("{ty}EnumIterator"), Span::call_site());
-    let iter_inner_ty = Ident::new(&format!("{ty}EnumIteratorInner"), Span::call_site());
-    let iter_variants = build_iterator_variants(variants);
-    let arms = build_arms(ty, &iter_inner_ty, variants);
-    let lengths = build_length_operands(variants);
-    let first = match variants.first() {
-        Some(first) => init_variant(&iter_inner_ty, first),
-        None => quote! { loop {} },
-    };
-    let iter_inner_ty_clone = impl_clone_arms_for_iter_inner_ty(&iter_inner_ty, variants);
+    let cardinality = enum_cardinality(variants);
+    let first = init_enum(ty, variants, Direction::Forward);
+    let last = init_enum(ty, variants.iter().rev(), Direction::Backward);
+    let next_body = advance_enum(ty, variants, Direction::Forward);
+    let previous_body = advance_enum(ty, variants.iter().rev(), Direction::Backward);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let where_clause = if generics.params.is_empty() {
         where_clause.cloned()
@@ -148,131 +129,166 @@ fn derive_for_enum(
         Some(clause)
     };
     let tokens = quote! {
-        enum #iter_inner_ty #impl_generics #where_clause {
-            #(#iter_variants,)*
-        }
+        impl #impl_generics ::enum_iterator::Sequence for #ty #ty_generics #where_clause {
+            const CARDINALITY: usize = #cardinality;
 
-        impl #impl_generics ::core::clone::Clone for #iter_inner_ty #ty_generics #where_clause {
-            fn clone(&self) -> Self {
-                match self {
-                    #iter_inner_ty_clone
-                }
+            fn next(&self) -> ::core::option::Option<Self> {
+                #next_body
             }
-        }
 
-        #[doc = #ty_doc]
-        #vis struct #iter_ty #impl_generics(#iter_inner_ty #ty_generics) #where_clause;
-
-        impl #impl_generics ::core::clone::Clone for #iter_ty #ty_generics #where_clause {
-            fn clone(&self) -> Self {
-                Self(::core::clone::Clone::clone(&self.0))
+            fn previous(&self) -> ::core::option::Option<Self> {
+                #previous_body
             }
-        }
 
-        impl #impl_generics ::core::iter::Iterator for #iter_ty #ty_generics #where_clause {
-            type Item = #ty #ty_generics;
-
-            fn next(&mut self) -> ::core::option::Option<Self::Item> {
-                loop {
-                    match &mut self.0 {
-                        #(#arms)*
-                    }
-                }
+            fn first() -> ::core::option::Option<Self> {
+                ::core::option::Option::Some(#first)
             }
-        }
 
-        impl #impl_generics ::enum_iterator::IntoEnumIterator for #ty #ty_generics #where_clause {
-            type Iterator = #iter_ty #ty_generics;
-
-            const ITEM_COUNT: usize = 0 #(+ #lengths)*;
-
-            fn into_enum_iter() -> Self::Iterator {
-                #iter_ty(#first)
+            fn last() -> ::core::option::Option<Self> {
+                ::core::option::Option::Some(#last)
             }
         }
     };
-    Ok(isolate_code(tokens))
+    Ok(tokens)
 }
 
-fn build_length_operands(variants: &Punctuated<Variant, Comma>) -> Vec<TokenStream> {
-    variants
+fn enum_cardinality(variants: &Punctuated<Variant, Comma>) -> TokenStream {
+    let terms = variants
         .iter()
-        .map(|variant| match &variant.fields {
-            Fields::Named(FieldsNamed { named: fields, .. })
-            | Fields::Unnamed(FieldsUnnamed {
-                unnamed: fields, ..
-            }) => {
-                let ty = tuple_type(fields);
-                quote! {
-                    <#ty as ::enum_iterator::IntoEnumIterator>::ITEM_COUNT
-                }
-            }
-            Fields::Unit => quote! { 1 },
-        })
-        .collect()
-}
-
-fn build_iterator_variants(variants: &Punctuated<Variant, Comma>) -> Vec<TokenStream> {
-    variants
-        .iter()
-        .map(|variant| {
-            let id = &variant.ident;
-            match &variant.fields {
-                Fields::Named(FieldsNamed { named: fields, .. })
-                | Fields::Unnamed(FieldsUnnamed {
-                    unnamed: fields, ..
-                }) => {
-                    let ty = tuple_type(fields);
-                    quote! {
-                        #id(<#ty as ::enum_iterator::IntoEnumIterator>::Iterator)
-                    }
-                }
-                Fields::Unit => quote! { #id },
-            }
-        })
-        .chain(Some(quote! { __EnumIteratorEnd }))
-        .collect()
-}
-
-fn tuple_type<'a, I>(fields: I) -> TokenStream
-where
-    I: IntoIterator<Item = &'a Field>,
-    I::IntoIter: DoubleEndedIterator,
-{
-    fields
-        .into_iter()
-        .rev()
-        .map(|field| &field.ty)
-        .fold(quote! {}, |acc, ty| {
-            quote! {
-                (#ty, #acc)
-            }
-        })
-}
-
-fn init_variant(iter_inner_ty: &Ident, variant: &Variant) -> TokenStream {
-    let id = &variant.ident;
-    match &variant.fields {
-        Fields::Named(FieldsNamed { named: fields, .. })
-        | Fields::Unnamed(FieldsUnnamed {
-            unnamed: fields, ..
-        }) => {
-            let ty = tuple_type(fields);
-            quote! {
-                #iter_inner_ty::#id(
-                    <#ty as ::enum_iterator::IntoEnumIterator>::into_enum_iter(),
-                )
-            }
-        }
-        Fields::Unit => quote! { #iter_inner_ty::#id },
+        .map(|variant| tuple_cardinality(&variant.fields));
+    quote! {
+        #((#terms) +)* 0
     }
 }
 
-fn tuple_pattern(len: usize) -> TokenStream {
-    (0..len).rev().fold(quote! {}, |acc, i| {
-        let id = Ident::new(&format!("x{i}"), Span::call_site());
-        quote! { (#id, #acc) }
-    })
+fn tuple_cardinality(fields: &Fields) -> TokenStream {
+    let factors = fields.iter().map(|field| {
+        let ty = &field.ty;
+        quote! {
+            <#ty as ::enum_iterator::Sequence>::CARDINALITY
+        }
+    });
+    quote! {
+        #(#factors *)* 1
+    }
+}
+
+fn field_id(field: &Field, index: usize) -> Member {
+    field
+        .ident
+        .clone()
+        .map_or_else(|| Member::from(index), Member::from)
+}
+
+fn init_fields(fields: &Fields, direction: Direction) -> TokenStream {
+    let reset = direction.reset();
+    fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let id = field_id(field, i);
+            quote! {
+                #id: ::enum_iterator::Sequence::#reset()?,
+            }
+        })
+        .collect::<TokenStream>()
+}
+
+fn init_enum<'a, V>(ty: &Ident, variants: V, direction: Direction) -> TokenStream
+where
+    V: IntoIterator<Item = &'a Variant>,
+{
+    let inits = variants.into_iter().map(|variant| {
+        let id = &variant.ident;
+        let init = init_fields(&variant.fields, direction);
+        quote! {
+            #ty::#id { #init }
+        }
+    });
+    quote! {
+        ::core::option::Option::None
+        #(
+            .or_else(|| ::core::option::Option::Some(#inits))
+        )*?
+    }
+}
+
+fn advance_struct(ty: &Ident, fields: &Fields, direction: Direction) -> TokenStream {
+    let assignments = field_assignments(fields);
+    let bindings = bindings().take(fields.len()).collect::<Vec<_>>();
+    let tuple = advance_tuple(&bindings, direction);
+    quote! {
+        let #ty { #assignments } = self;
+        let (#(#bindings,)*) = #tuple?;
+        Some(#ty { #assignments })
+    }
+}
+
+fn advance_enum<'a, V>(ty: &Ident, variants: V, direction: Direction) -> TokenStream
+where
+    V: IntoIterator<Item = &'a Variant>,
+    V::IntoIter: Clone,
+{
+    let mut variants = variants.into_iter();
+    let arms = iter::from_fn(|| variants.next().map(|variant| (variant, variants.clone()))).map(
+        |(variant, next_variants)| {
+            let next = init_enum(ty, next_variants, direction);
+            let id = &variant.ident;
+            let assignments = field_assignments(&variant.fields);
+            let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
+            let tuple = advance_tuple(&bindings, direction);
+            quote! {
+                #ty::#id { #assignments } => {
+                    #tuple
+                        .map(|(#(#bindings,)*)| #ty::#id { #assignments })
+                        .or_else(|| ::core::option::Option::Some(#next))
+                }
+            }
+        },
+    );
+    quote! {
+        match self {
+            #(#arms,)*
+        }
+    }
+}
+
+fn advance_tuple(bindings: &[Ident], direction: Direction) -> TokenStream {
+    let advance = direction.advance();
+    let reset = direction.reset();
+    let rev_bindings = bindings.iter().rev().collect::<Vec<_>>();
+    let (rev_binding_head, rev_binding_tail) = match rev_bindings.split_first() {
+        Some((&head, tail)) => (Some(head), tail),
+        None => (None, &*rev_bindings),
+    };
+    let rev_binding_head = match rev_binding_head {
+        Some(head) => quote! {
+            let (#head, carry) = match ::enum_iterator::Sequence::#advance(#head) {
+                ::core::option::Option::Some(#head) => (#head, false),
+                ::core::option::Option::None => (::enum_iterator::Sequence::#reset()?, true),
+            };
+        },
+        None => quote! {
+            let carry = true;
+        },
+    };
+    let body = quote! {
+        #rev_binding_head
+        #(
+            let (#rev_binding_tail, carry) = if carry {
+                match ::enum_iterator::Sequence::#advance(#rev_binding_tail) {
+                    ::core::option::Option::Some(#rev_binding_tail) => (#rev_binding_tail, false),
+                    ::core::option::Option::None => (::enum_iterator::Sequence::#reset()?, true),
+                }
+            } else {
+                (::core::clone::Clone::clone(#rev_binding_tail), false)
+            };
+        )*
+        Some((#(#bindings,)*)).filter(|_| !carry)
+    };
+    quote! {
+        (|| { #body })()
+    }
 }
 
 fn field_assignments<'a, I>(fields: I) -> TokenStream
@@ -282,97 +298,16 @@ where
     fields
         .into_iter()
         .enumerate()
-        .map(|(i, field)| {
-            let field_id = field.ident.clone().map(Member::Named).unwrap_or_else(|| {
-                Member::Unnamed(syn::Index {
-                    index: i.try_into().unwrap(),
-                    span: Span::call_site(),
-                })
-            });
-            let value = Ident::new(&format!("x{i}"), Span::call_site());
-            quote! { #field_id: #value, }
+        .zip(bindings())
+        .map(|((i, field), binding)| {
+            let field_id = field_id(field, i);
+            quote! { #field_id: #binding, }
         })
         .collect()
 }
 
-fn build_arms(
-    ty: &Ident,
-    iter_inner_ty: &Ident,
-    variants: &Punctuated<Variant, Comma>,
-) -> Vec<TokenStream> {
-    let next_variants = variants
-        .iter()
-        .skip(1)
-        .map(|variant| init_variant(iter_inner_ty, variant))
-        .chain(Some(quote! { #iter_inner_ty::__EnumIteratorEnd }));
-    variants
-        .iter()
-        .zip(next_variants)
-        .map(|(variant, next)| {
-            let id = &variant.ident;
-            match &variant.fields {
-                Fields::Named(FieldsNamed { named: fields, .. })
-                | Fields::Unnamed(FieldsUnnamed {
-                    unnamed: fields, ..
-                }) => {
-                    let pattern = tuple_pattern(fields.len());
-                    let assignments = field_assignments(fields);
-                    quote! {
-                        #iter_inner_ty::#id(inner) => match ::core::iter::Iterator::next(inner) {
-                            ::core::option::Option::Some(#pattern) => {
-                                break ::core::option::Option::Some(#ty::#id {
-                                    #assignments
-                                })
-                            }
-                            ::core::option::Option::None => self.0 = #next,
-                        }
-                    }
-                }
-                Fields::Unit => quote! {
-                    #iter_inner_ty::#id => {
-                        self.0 = #next;
-                        break ::core::option::Option::Some(#ty::#id);
-                    }
-                },
-            }
-        })
-        .chain(Some(
-            quote! { #iter_inner_ty::__EnumIteratorEnd => break ::core::option::Option::None, },
-        ))
-        .collect()
-}
-
-fn impl_clone_arms_for_iter_inner_ty(
-    iter_inner_ty: &Ident,
-    variants: &Punctuated<Variant, Comma>,
-) -> TokenStream {
-    variants
-        .iter()
-        .map(|variant| {
-            let id = &variant.ident;
-            match &variant.fields {
-                Fields::Named(FieldsNamed { .. }) | Fields::Unnamed(FieldsUnnamed { .. }) => {
-                    quote! {
-                        #iter_inner_ty::#id(inner) => {
-                            #iter_inner_ty::#id(::core::clone::Clone::clone(inner))
-                        },
-                    }
-                }
-                Fields::Unit => quote! { #iter_inner_ty::#id => #iter_inner_ty::#id, },
-            }
-        })
-        .chain(Some(
-            quote! { #iter_inner_ty::__EnumIteratorEnd => #iter_inner_ty::__EnumIteratorEnd, },
-        ))
-        .collect()
-}
-
-fn isolate_code(code: TokenStream) -> TokenStream {
-    quote! {
-        const _: () = {
-            #code
-        };
-    }
+fn bindings() -> impl Iterator<Item = Ident> {
+    (0..).map(|i| Ident::new(&format!("x{i}"), Span::call_site()))
 }
 
 fn trait_bounds<I>(types: I) -> impl Iterator<Item = PredicateType>
@@ -389,7 +324,7 @@ where
                 .into_iter()
                 .map(|req| match req {
                     TypeRequirement::Clone => clone_trait_path(),
-                    TypeRequirement::IntoEnumIterator => trait_path(),
+                    TypeRequirement::Sequence => trait_path(),
                 })
                 .map(trait_bound)
                 .collect(),
@@ -410,7 +345,7 @@ fn trait_path() -> Path {
         leading_colon: Some(Default::default()),
         segments: [
             PathSegment::from(Ident::new("enum_iterator", Span::call_site())),
-            Ident::new("IntoEnumIterator", Span::call_site()).into(),
+            Ident::new("Sequence", Span::call_site()).into(),
         ]
         .into_iter()
         .collect(),
@@ -431,8 +366,8 @@ fn clone_trait_path() -> Path {
 }
 
 fn tuple_type_requirements() -> impl Iterator<Item = TypeRequirements> {
-    once([TypeRequirement::IntoEnumIterator].into()).chain(repeat(
-        [TypeRequirement::IntoEnumIterator, TypeRequirement::Clone].into(),
+    once([TypeRequirement::Sequence].into()).chain(repeat(
+        [TypeRequirement::Sequence, TypeRequirement::Clone].into(),
     ))
 }
 
@@ -458,7 +393,7 @@ where
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TypeRequirement {
-    IntoEnumIterator,
+    Sequence,
     Clone,
 }
 
@@ -466,7 +401,7 @@ enum TypeRequirement {
 struct TypeRequirements(u8);
 
 impl TypeRequirements {
-    const INTO_ENUM_ITERATOR: u8 = 0x1;
+    const SEQUENCE: u8 = 0x1;
     const CLONE: u8 = 0x2;
 
     fn new() -> Self {
@@ -480,9 +415,9 @@ impl TypeRequirements {
     fn into_iter(self) -> impl Iterator<Item = TypeRequirement> {
         let mut n = self.0;
         iter::from_fn(move || {
-            if n & Self::INTO_ENUM_ITERATOR != 0 {
-                n &= !Self::INTO_ENUM_ITERATOR;
-                Some(TypeRequirement::IntoEnumIterator)
+            if n & Self::SEQUENCE != 0 {
+                n &= !Self::SEQUENCE;
+                Some(TypeRequirement::Sequence)
             } else if n & Self::CLONE != 0 {
                 n &= !Self::CLONE;
                 Some(TypeRequirement::Clone)
@@ -498,7 +433,7 @@ impl TypeRequirements {
 
     fn enum_to_mask(req: TypeRequirement) -> u8 {
         match req {
-            TypeRequirement::IntoEnumIterator => Self::INTO_ENUM_ITERATOR,
+            TypeRequirement::Sequence => Self::SEQUENCE,
             TypeRequirement::Clone => Self::CLONE,
         }
     }
@@ -511,6 +446,30 @@ impl<const N: usize> From<[TypeRequirement; N]> for TypeRequirements {
                 acc.insert(req);
                 acc
             })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Direction {
+    Forward,
+    Backward,
+}
+
+impl Direction {
+    fn advance(self) -> Ident {
+        let s = match self {
+            Direction::Forward => "next",
+            Direction::Backward => "previous",
+        };
+        Ident::new(s, Span::call_site())
+    }
+
+    fn reset(self) -> Ident {
+        let s = match self {
+            Direction::Forward => "first",
+            Direction::Backward => "last",
+        };
+        Ident::new(s, Span::call_site())
     }
 }
 
@@ -528,9 +487,7 @@ impl Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::UnsupportedUnion => {
-                f.write_str("IntoEnumIterator cannot be derived for union types")
-            }
+            Error::UnsupportedUnion => f.write_str("Sequence cannot be derived for union types"),
         }
     }
 }

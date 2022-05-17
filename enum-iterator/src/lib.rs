@@ -7,30 +7,50 @@
 //!
 //! Tools to iterate over the values of a type.
 //!
-//! See the [`IntoEnumIterator`] trait.
-//!
 //! # Examples
 //! ```
-//! use enum_iterator::IntoEnumIterator;
+//! use enum_iterator::{all, cardinality, first, last, next, previous, reverse_all, Sequence};
 //!
-//! #[derive(Debug, IntoEnumIterator, PartialEq)]
+//! #[derive(Debug, PartialEq, Sequence)]
 //! enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 //!
-//! assert_eq!(Day::into_enum_iter().next(), Some(Day::Monday));
-//! assert_eq!(Day::into_enum_iter().last(), Some(Day::Sunday));
+//! assert_eq!(cardinality::<Day>(), 7);
+//! assert_eq!(all::<Day>().collect::<Vec<_>>(), [
+//!     Day::Monday,
+//!     Day::Tuesday,
+//!     Day::Wednesday,
+//!     Day::Thursday,
+//!     Day::Friday,
+//!     Day::Saturday,
+//!     Day::Sunday,
+//! ]);
+//! assert_eq!(first::<Day>(), Some(Day::Monday));
+//! assert_eq!(last::<Day>(), Some(Day::Sunday));
+//! assert_eq!(next(&Day::Tuesday), Some(Day::Wednesday));
+//! assert_eq!(previous(&Day::Wednesday), Some(Day::Tuesday));
+//! assert_eq!(reverse_all::<Day>().collect::<Vec<_>>(), [
+//!     Day::Sunday,
+//!     Day::Saturday,
+//!     Day::Friday,
+//!     Day::Thursday,
+//!     Day::Wednesday,
+//!     Day::Tuesday,
+//!     Day::Monday,
+//! ]);
 //! ```
 //!
 //! ```
-//! use enum_iterator::IntoEnumIterator;
+//! use enum_iterator::{cardinality, first, last, Sequence};
 //!
-//! #[derive(Debug, IntoEnumIterator, PartialEq)]
+//! #[derive(Debug, PartialEq, Sequence)]
 //! struct Foo {
 //!     a: bool,
 //!     b: u8,
 //! }
 //!
-//! assert_eq!(Foo::into_enum_iter().next(), Some(Foo { a: false, b: 0 }));
-//! assert_eq!(Foo::into_enum_iter().last(), Some(Foo { a: true, b: 255 }));
+//! assert_eq!(cardinality::<Foo>(), 512);
+//! assert_eq!(first::<Foo>(), Some(Foo { a: false, b: 0 }));
+//! assert_eq!(last::<Foo>(), Some(Foo { a: true, b: 255 }));
 //! ```
 //!
 //! # Contribute
@@ -40,66 +60,217 @@
 #![deny(warnings)]
 #![no_std]
 
-pub use enum_iterator_derive::IntoEnumIterator;
+use core::iter::FusedIterator;
+
+pub use enum_iterator_derive::Sequence;
+
+/// Returns the cardinality (number of values) of `T`
+///
+/// # Example
+/// ```
+/// use enum_iterator::{cardinality, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Color { Red, Green, Blue }
+///
+/// assert_eq!(cardinality::<Color>(), 3);
+/// ```
+pub const fn cardinality<T: Sequence>() -> usize {
+    T::CARDINALITY
+}
+
+/// Returns an iterator over all values of type `T`.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{all, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Color { Red, Green, Blue }
+///
+/// assert_eq!(
+///     all::<Color>().collect::<Vec<_>>(),
+///     [Color::Red, Color::Green, Color::Blue],
+/// );
+/// ```
+pub fn all<T: Sequence>() -> All<T> {
+    All(T::first())
+}
+
+/// Returns an iterator over all values of type `T` in the reverse order of [`all`].
+///
+/// # Example
+/// ```
+/// use enum_iterator::{reverse_all, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Color { Red, Green, Blue }
+///
+/// assert_eq!(
+///     reverse_all::<Color>().collect::<Vec<_>>(),
+///     [Color::Blue, Color::Green, Color::Red],
+/// );
+/// ```
+pub fn reverse_all<T: Sequence>() -> ReverseAll<T> {
+    ReverseAll(T::last())
+}
+
+/// Returns the next value of type `T`.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{next, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(next(&Day::Friday), Some(Day::Saturday));
+/// ```
+pub fn next<T: Sequence>(x: &T) -> Option<T> {
+    x.next()
+}
+
+/// Returns the previous value of type `T`.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{previous, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(previous(&Day::Saturday), Some(Day::Friday));
+/// ```
+pub fn previous<T: Sequence>(x: &T) -> Option<T> {
+    x.previous()
+}
+
+/// Returns the first value of type `T`.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{first, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(first::<Day>(), Some(Day::Monday));
+/// ```
+pub fn first<T: Sequence>() -> Option<T> {
+    T::first()
+}
+
+/// Returns the last value of type `T`.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{last, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(last::<Day>(), Some(Day::Sunday));
+/// ```
+pub fn last<T: Sequence>() -> Option<T> {
+    T::last()
+}
+
+/// Iterator over the values of type `T`.
+///
+/// Returned by [`all`].
+#[derive(Clone, Debug)]
+pub struct All<T>(Option<T>);
+
+impl<T: Sequence> Iterator for All<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        let item = self.0.take()?;
+        self.0 = item.next();
+        Some(item)
+    }
+}
+
+impl<T: Sequence> FusedIterator for All<T> {}
+
+/// Iterator over the values of type `T` in reverse order.
+///
+/// Returned by [`reverse_all`].
+#[derive(Clone, Debug)]
+pub struct ReverseAll<T>(Option<T>);
+
+impl<T: Sequence> Iterator for ReverseAll<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        let item = self.0.take()?;
+        self.0 = item.previous();
+        Some(item)
+    }
+}
+
+impl<T: Sequence> FusedIterator for ReverseAll<T> {}
 
 /// Trait to iterate over the values of a type.
 ///
 /// # Derivation
 ///
-/// `IntoEnumIterator` can be derived for `enum` and `struct` types. Specifically, it can be derived
+/// `Sequence` can be derived for `enum` and `struct` types. Specifically, it can be derived
 /// for:
 /// - Enumerations whose variants meet one of the following criteria:
 ///   - The variant does not have fields.
-///   - The variant has fields such that:
-///     - Every field has a type that implements `IntoEnumIterator`.
+///   - The variant has fields meeting all these conditions:
+///     - Every field has a type that implements `Sequence`.
 ///     - Every field but the last one has a type that implements `Clone`.
-/// - Structures whose fields are such that:
-///     - Every field has a type that implements `IntoEnumIterator`.
+/// - Enumerations without variants.
+/// - Structures whose fields meet all these conditions:
+///     - Every field has a type that implements `Sequence`.
 ///     - Every field but the last one has a type that implements `Clone`.
+/// - Unit structures (i.e. without fields).
 ///
-/// The number of values of the type must not exceed `usize::MAX`.
+/// The cardinality (number of values) of the type must not exceed `usize::MAX`.
 ///
 /// # Examples
 /// ## C-like enumeration
 ///
 /// ```
-/// use enum_iterator::IntoEnumIterator;
+/// use enum_iterator::{all, cardinality, Sequence};
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum Direction { North, South, West, East }
 ///
-/// assert_eq!(Direction::ITEM_COUNT, 4);
-/// assert!(Direction::into_enum_iter().eq([
+/// assert_eq!(cardinality::<Direction>(), 4);
+/// assert_eq!(all::<Direction>().collect::<Vec<_>>(), [
 ///     Direction::North,
 ///     Direction::South,
 ///     Direction::West,
 ///     Direction::East,
-/// ]));
+/// ]);
 /// ```
 ///
 /// ## Enumeration with data
 ///
 /// ```
-/// use enum_iterator::IntoEnumIterator;
+/// use enum_iterator::{all, cardinality, Sequence};
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum Direction { North, South, West, East }
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum Greeting {
 ///     Hi,
 ///     Bye,
 /// }
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum Action {
 ///     Move(Direction),
 ///     Jump,
 ///     Talk { greeting: Greeting, loud: bool },
 /// }
 ///
-/// assert_eq!(Action::ITEM_COUNT, 4 + 1 + 2 * 2);
-/// assert!(Action::into_enum_iter().eq([
+/// assert_eq!(cardinality::<Action>(), 4 + 1 + 2 * 2);
+/// assert_eq!(all::<Action>().collect::<Vec<_>>(), [
 ///     Action::Move(Direction::North),
 ///     Action::Move(Direction::South),
 ///     Action::Move(Direction::West),
@@ -109,343 +280,477 @@ pub use enum_iterator_derive::IntoEnumIterator;
 ///     Action::Talk { greeting: Greeting::Hi, loud: true },
 ///     Action::Talk { greeting: Greeting::Bye, loud: false },
 ///     Action::Talk { greeting: Greeting::Bye, loud: true },
-/// ]));
+/// ]);
 /// ```
 ///
 /// ## Structure
 ///
 /// ```
-/// use enum_iterator::IntoEnumIterator;
+/// use enum_iterator::{all, cardinality, Sequence};
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum Side {
 ///     Left,
 ///     Right,
 /// }
 ///
-/// #[derive(Clone, Copy, IntoEnumIterator, PartialEq)]
+/// #[derive(Clone, Copy, Debug, PartialEq, Sequence)]
 /// enum LimbKind {
 ///     Arm,
 ///     Leg,
 /// }
 ///
-/// #[derive(IntoEnumIterator, PartialEq)]
+/// #[derive(Debug, PartialEq, Sequence)]
 /// struct Limb {
 ///     kind: LimbKind,
 ///     side: Side,
 /// }
 ///
-/// assert_eq!(Limb::ITEM_COUNT, 4);
-/// assert!(Limb::into_enum_iter().eq([
+/// assert_eq!(cardinality::<Limb>(), 4);
+/// assert_eq!(all::<Limb>().collect::<Vec<_>>(), [
 ///     Limb { kind: LimbKind::Arm, side: Side::Left },
 ///     Limb { kind: LimbKind::Arm, side: Side::Right },
 ///     Limb { kind: LimbKind::Leg, side: Side::Left },
 ///     Limb { kind: LimbKind::Leg, side: Side::Right },
-/// ]));
+/// ]);
 /// ```
-pub trait IntoEnumIterator: Sized {
-    /// Type of the iterator returned by [`IntoEnumIterator::into_enum_iter`].
-    type Iterator: Iterator<Item = Self> + Clone;
+pub trait Sequence: Sized {
+    /// Number of values of type `Self`.
+    ///
+    /// # Example
+    /// ```
+    /// use enum_iterator::Sequence;
+    ///
+    /// #[derive(Sequence)]
+    /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+    ///
+    /// assert_eq!(Day::CARDINALITY, 7);
+    /// ```
+    const CARDINALITY: usize;
 
-    /// Number of values in `Self`.
-    const ITEM_COUNT: usize;
+    /// Returns value following `*self`.
+    ///
+    /// # Example
+    /// ```
+    /// use enum_iterator::Sequence;
+    ///
+    /// #[derive(Debug, PartialEq, Sequence)]
+    /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+    ///
+    /// assert_eq!(Day::Tuesday.next(), Some(Day::Wednesday));
+    /// ```
+    fn next(&self) -> Option<Self>;
 
-    /// Returns an iterator over the values of `Self`.
-    fn into_enum_iter() -> Self::Iterator;
+    /// Returns value preceding `*self`.
+    ///
+    /// # Example
+    /// ```
+    /// use enum_iterator::Sequence;
+    ///
+    /// #[derive(Debug, PartialEq, Sequence)]
+    /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+    ///
+    /// assert_eq!(Day::Wednesday.previous(), Some(Day::Tuesday));
+    /// ```
+    fn previous(&self) -> Option<Self>;
+
+    /// Returns the first value of type `Self`.
+    ///
+    /// # Example
+    /// ```
+    /// use enum_iterator::Sequence;
+    ///
+    /// #[derive(Debug, PartialEq, Sequence)]
+    /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+    ///
+    /// assert_eq!(Day::first(), Some(Day::Monday));
+    /// ```
+    fn first() -> Option<Self>;
+
+    /// Returns the last value of type `Self`.
+    ///
+    /// # Example
+    /// ```
+    /// use enum_iterator::Sequence;
+    ///
+    /// #[derive(Debug, PartialEq, Sequence)]
+    /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+    ///
+    /// assert_eq!(Day::last(), Some(Day::Sunday));
+    /// ```
+    fn last() -> Option<Self>;
 }
 
-impl IntoEnumIterator for bool {
-    type Iterator = core::array::IntoIter<bool, 2>;
-    const ITEM_COUNT: usize = 2;
+impl Sequence for bool {
+    const CARDINALITY: usize = 2;
 
-    fn into_enum_iter() -> Self::Iterator {
-        [false, true].into_iter()
+    fn next(&self) -> Option<Self> {
+        (!*self).then(|| true)
+    }
+
+    fn previous(&self) -> Option<Self> {
+        (*self).then(|| false)
+    }
+
+    fn first() -> Option<Self> {
+        Some(false)
+    }
+
+    fn last() -> Option<Self> {
+        Some(true)
     }
 }
 
-impl IntoEnumIterator for i8 {
-    type Iterator = core::ops::RangeInclusive<i8>;
-    const ITEM_COUNT: usize = 1 << 8;
+macro_rules! impl_sequence_for_int {
+    ($ty:ty) => {
+        impl Sequence for $ty {
+            const CARDINALITY: usize = 1 << <$ty>::BITS;
 
-    fn into_enum_iter() -> Self::Iterator {
-        i8::MIN..=i8::MAX
+            fn next(&self) -> Option<Self> {
+                self.checked_add(1)
+            }
+
+            fn previous(&self) -> Option<Self> {
+                self.checked_sub(1)
+            }
+
+            fn first() -> Option<Self> {
+                Some(Self::MIN)
+            }
+
+            fn last() -> Option<Self> {
+                Some(Self::MAX)
+            }
+        }
+    };
+}
+
+impl_sequence_for_int!(i8);
+impl_sequence_for_int!(u8);
+impl_sequence_for_int!(i16);
+impl_sequence_for_int!(u16);
+
+impl Sequence for () {
+    const CARDINALITY: usize = 1;
+
+    fn next(&self) -> Option<Self> {
+        None
+    }
+
+    fn previous(&self) -> Option<Self> {
+        None
+    }
+
+    fn first() -> Option<Self> {
+        Some(())
+    }
+
+    fn last() -> Option<Self> {
+        Some(())
     }
 }
 
-impl IntoEnumIterator for u8 {
-    type Iterator = core::ops::RangeInclusive<u8>;
-    const ITEM_COUNT: usize = 1 << 8;
+impl Sequence for core::convert::Infallible {
+    const CARDINALITY: usize = 0;
 
-    fn into_enum_iter() -> Self::Iterator {
-        u8::MIN..=u8::MAX
+    fn next(&self) -> Option<Self> {
+        None
+    }
+
+    fn previous(&self) -> Option<Self> {
+        None
+    }
+
+    fn first() -> Option<Self> {
+        None
+    }
+
+    fn last() -> Option<Self> {
+        None
     }
 }
 
-impl IntoEnumIterator for i16 {
-    type Iterator = core::ops::RangeInclusive<i16>;
-    const ITEM_COUNT: usize = 1 << 16;
+impl<T: Sequence> Sequence for Option<T> {
+    const CARDINALITY: usize = T::CARDINALITY + 1;
 
-    fn into_enum_iter() -> Self::Iterator {
-        i16::MIN..=i16::MAX
-    }
-}
-
-impl IntoEnumIterator for u16 {
-    type Iterator = core::ops::RangeInclusive<u16>;
-    const ITEM_COUNT: usize = 1 << 16;
-
-    fn into_enum_iter() -> Self::Iterator {
-        u16::MIN..=u16::MAX
-    }
-}
-
-impl IntoEnumIterator for () {
-    type Iterator = TupleEnumIterator<bool>;
-    const ITEM_COUNT: usize = 1;
-
-    fn into_enum_iter() -> Self::Iterator {
-        TupleEnumIterator(false)
-    }
-}
-
-impl Iterator for TupleEnumIterator<bool> {
-    type Item = ();
-
-    fn next(&mut self) -> Option<()> {
-        if self.0 {
-            None
-        } else {
-            self.0 = true;
-            Some(())
+    fn next(&self) -> Option<Self> {
+        match self {
+            None => Some(T::first()),
+            Some(x) => x.next().map(Some),
         }
     }
-}
 
-impl<T: IntoEnumIterator> IntoEnumIterator for Option<T> {
-    type Iterator = OptionEnumIterator<T>;
-    const ITEM_COUNT: usize = T::ITEM_COUNT + 1;
+    fn previous(&self) -> Option<Self> {
+        self.as_ref().map(T::previous)
+    }
 
-    fn into_enum_iter() -> Self::Iterator {
-        OptionEnumIterator::new()
+    fn first() -> Option<Self> {
+        Some(None)
+    }
+
+    fn last() -> Option<Self> {
+        Some(T::last())
     }
 }
 
-macro_rules! tuple_next {
-    (reverse $this:ident, $carry:expr, $($values:expr,)* @ $($reversed:ty,)* @ $head:ty, $($tail:ty,)*) => {
-        tuple_next!(reverse $this, $carry, $($values,)* @ $head, $($reversed,)* @ $($tail,)*)
-    };
-
-    (reverse $this:ident, $carry:expr, $($values:expr,)* @ $($reversed:ty,)* @) => {
-        tuple_next!($this, $carry, $($values,)* @ _, _, @ $($reversed,)*)
-    };
-
-    ($this:ident, $carry:expr, $($values:expr,)* @ $($placeholders:pat,)* @) => {
+macro_rules! impl_seq_advance_for_tuple {
+    (
+        $this:ident,
+        $advance:ident,
+        $reset:ident,
+        $carry:ident
+        @ $($values:expr,)*
+        @
+        @ $($placeholders:pat,)*
+    ) => {
         Some(($($values,)*)).filter(|_| !$carry)
     };
-
-    ($this:ident, $carry:expr, $($values:expr,)* @ $($placeholders:pat,)* @ $head:ty, $($tail:ty,)*) => {{
-        let (.., cache, it, $($placeholders,)*) = $this;
-        let (x, new_carry) = match cache.as_ref().filter(|_| !$carry).cloned() {
-            Some(x) => Some((x, false)),
-            None => {
-                let (x, new_carry) = match it.next() {
-                    Some(x) => Some((x, false)),
-                    None => {
-                        *it = <$head as IntoEnumIterator>::into_enum_iter();
-                        it.next().map(|x| (x, true))
-                    }
-                }?;
-                *cache = Some(x.clone());
-                Some((x, new_carry))
+    (
+        $this:ident,
+        $advance:ident,
+        $reset:ident,
+        $carry:ident
+        @ $($values:expr,)*
+        @ $ty:ident, $($types:ident,)*
+        @ $($placeholders:pat,)*
+    ) => {{
+        let (.., item, $($placeholders,)*) = $this;
+        let (x, new_carry) = if $carry {
+            match Sequence::$advance(item) {
+                Some(x) => (x, false),
+                None => (Sequence::$reset()?, true),
             }
-        }?;
-        tuple_next!($this, new_carry, x, $($values,)* @ $($placeholders,)* _, _, @ $($tail,)*)
+        } else {
+            (item.clone(), false)
+        };
+        impl_seq_advance_for_tuple!(
+            $this,
+            $advance,
+            $reset,
+            new_carry
+            @ x, $($values,)*
+            @ $($types,)*
+            @ _, $($placeholders,)*
+        )
+    }};
+    ($this:ident, $advance:ident, $reset:ident @ $($types:ident,)*) => {{
+        let (.., item) = $this;
+        let (x, carry) = match Sequence::$advance(item) {
+            Some(x) => (x, false),
+            None => (Sequence::$reset()?, true),
+        };
+        impl_seq_advance_for_tuple!($this, $advance, $reset, carry @ x, @ $($types,)* @ _,)
     }};
 }
 
-macro_rules! impl_tuple {
-    ($($tys:ident,)* @ $last:ident) => {
-        impl<$($tys,)* $last> IntoEnumIterator for ($($tys,)* $last,)
+macro_rules! impl_sequence_for_tuple {
+    ($($types:ident,)* @ $last:ident) => {
+        impl<$($types,)* $last> Sequence for ($($types,)* $last,)
         where
-            $($tys: IntoEnumIterator + Clone,)*
-            $last: IntoEnumIterator,
+            $($types: Sequence + Clone,)*
+            $last: Sequence,
         {
-            type Iterator = TupleEnumIterator<(
-                $(Option<$tys>, <$tys as IntoEnumIterator>::Iterator,)*
-                core::marker::PhantomData<$last>,
-                <$last as IntoEnumIterator>::Iterator,
-            )>;
-            const ITEM_COUNT: usize = $(<$tys as IntoEnumIterator>::ITEM_COUNT *)* <$last as IntoEnumIterator>::ITEM_COUNT;
+            const CARDINALITY: usize =
+                $(<$types as Sequence>::CARDINALITY *)* <$last as Sequence>::CARDINALITY;
 
-            fn into_enum_iter() -> Self::Iterator {
-                TupleEnumIterator((
-                    $(None, <$tys as IntoEnumIterator>::into_enum_iter(),)*
-                    core::marker::PhantomData,
-                    <$last as IntoEnumIterator>::into_enum_iter(),
+            fn next(&self) -> Option<Self> {
+                impl_seq_advance_for_tuple!(self, next, first @ $($types,)*)
+            }
+
+            fn previous(&self) -> Option<Self> {
+                impl_seq_advance_for_tuple!(self, previous, last @ $($types,)*)
+            }
+
+            fn first() -> Option<Self> {
+                Some((
+                    $(<$types as Sequence>::first()?,)*
+                    <$last as Sequence>::first()?,
                 ))
             }
-        }
 
-        impl<$($tys,)* $last> Iterator for TupleEnumIterator<(
-            $(Option<$tys>, <$tys as IntoEnumIterator>::Iterator,)*
-            core::marker::PhantomData<$last>,
-            <$last as IntoEnumIterator>::Iterator,
-        )>
-        where
-            $($tys: IntoEnumIterator + Clone,)*
-            $last: IntoEnumIterator,
-        {
-            type Item = ($($tys,)* $last,);
-
-            fn next(&mut self) -> Option<Self::Item> {
-                let inner = &mut self.0;
-                let (.., it) = inner;
-                let (x, carry) = match it.next() {
-                    Some(x) => Some((x, false)),
-                    None => {
-                        *it = <$last as IntoEnumIterator>::into_enum_iter();
-                        it.next().map(|x| (x, true))
-                    }
-                }?;
-                tuple_next!(reverse inner, carry, x, @ @ $($tys,)*)
+            fn last() -> Option<Self> {
+                Some((
+                    $(<$types as Sequence>::last()?,)*
+                    <$last as Sequence>::last()?,
+                ))
             }
         }
     };
 }
 
-macro_rules! impl_tuples {
+macro_rules! impl_sequence_for_tuples {
     ($($types:ident,)*) => {
-        impl_tuples!(@ $($types,)*);
+        impl_sequence_for_tuples!(@ $($types,)*);
     };
     ($($types:ident,)* @ $head:ident, $($tail:ident,)*) => {
-        impl_tuple!($($types,)* @ $head);
-        impl_tuples!($($types,)* $head, @ $($tail,)*);
+        impl_sequence_for_tuple!($($types,)* @ $head);
+        impl_sequence_for_tuples!($($types,)* $head, @ $($tail,)*);
     };
     ($($types:ident,)* @) => {};
 }
 
-impl_tuples!(
+impl_sequence_for_tuples!(
     T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20,
     T21, T22, T23, T24, T25, T26, T27, T28, T29, T30, T31,
 );
 
-mod prv {
-    use crate::IntoEnumIterator;
-
-    #[derive(Clone, Debug)]
-    pub struct TupleEnumIterator<T>(pub(crate) T);
-
-    pub struct OptionEnumIterator<T: IntoEnumIterator>(OptionEnumIteratorInner<T>);
-
-    impl<T: IntoEnumIterator> OptionEnumIterator<T> {
-        pub(crate) fn new() -> Self {
-            Self(OptionEnumIteratorInner::None)
-        }
-    }
-
-    impl<T: IntoEnumIterator> Clone for OptionEnumIterator<T> {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
-    impl<T: IntoEnumIterator> Iterator for OptionEnumIterator<T> {
-        type Item = Option<T>;
-
-        fn next(&mut self) -> Option<Option<T>> {
-            match &mut self.0 {
-                OptionEnumIteratorInner::None => {
-                    self.0 = OptionEnumIteratorInner::Some(T::into_enum_iter());
-                    Some(None)
-                }
-                OptionEnumIteratorInner::Some(it) => it.next().map(Some),
-            }
-        }
-    }
-
-    enum OptionEnumIteratorInner<T: IntoEnumIterator> {
-        None,
-        Some(T::Iterator),
-    }
-
-    impl<T: IntoEnumIterator> Clone for OptionEnumIteratorInner<T> {
-        fn clone(&self) -> Self {
-            match self {
-                Self::None => Self::None,
-                Self::Some(it) => Self::Some(it.clone()),
-            }
-        }
-    }
-}
-
-use prv::{OptionEnumIterator, TupleEnumIterator};
-
 #[cfg(test)]
 mod tests {
-    use crate::IntoEnumIterator;
+    use crate::{all, cardinality, reverse_all, Sequence};
+    use core::convert::Infallible;
 
-    fn item_count_matches_length<T: IntoEnumIterator>() {
-        assert_eq!(T::ITEM_COUNT, T::into_enum_iter().count());
+    fn cardinality_equals_item_count<T: Sequence>() {
+        assert_eq!(cardinality::<T>(), all::<T>().count());
     }
 
     #[test]
-    fn item_count_matches_length_for_bool() {
-        item_count_matches_length::<bool>();
+    fn cardinality_equals_item_count_for_bool() {
+        cardinality_equals_item_count::<bool>();
     }
 
     #[test]
-    fn item_count_matches_length_for_i8() {
-        item_count_matches_length::<i8>();
+    fn all_bool_values_are_yielded() {
+        assert!(all::<bool>().eq([false, true]));
     }
 
     #[test]
-    fn item_count_matches_length_for_u8() {
-        item_count_matches_length::<u8>();
+    fn all_bool_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<bool>().eq([true, false]));
     }
 
     #[test]
-    fn item_count_matches_length_for_i16() {
-        item_count_matches_length::<i16>();
+    fn cardinality_equals_item_count_for_i8() {
+        cardinality_equals_item_count::<i8>();
     }
 
     #[test]
-    fn item_count_matches_length_for_u16() {
-        item_count_matches_length::<u16>();
+    fn all_i8_values_are_yielded() {
+        assert!(all::<i8>().eq(i8::MIN..=i8::MAX));
     }
 
     #[test]
-    fn item_count_matches_length_for_unit() {
-        item_count_matches_length::<()>();
+    fn all_i8_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<i8>().eq((i8::MIN..=i8::MAX).rev()));
     }
 
     #[test]
-    fn item_count_matches_length_for_singleton() {
-        item_count_matches_length::<(u8,)>();
+    fn cardinality_equals_item_count_for_u8() {
+        cardinality_equals_item_count::<u8>();
     }
 
     #[test]
-    fn item_count_matches_length_for_pair() {
-        item_count_matches_length::<(u8, bool)>();
+    fn all_u8_values_are_yielded() {
+        assert!(all::<u8>().eq(u8::MIN..=u8::MAX));
     }
 
     #[test]
-    fn item_count_matches_length_for_triple() {
-        item_count_matches_length::<(bool, u8, bool)>();
+    fn all_u8_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<u8>().eq((u8::MIN..=u8::MAX).rev()));
     }
 
     #[test]
-    fn item_count_matches_length_for_option() {
-        item_count_matches_length::<Option<u8>>();
+    fn cardinality_equals_item_count_for_i16() {
+        cardinality_equals_item_count::<i16>();
+    }
+
+    #[test]
+    fn all_i16_values_are_yielded() {
+        assert!(all::<i16>().eq(i16::MIN..=i16::MAX));
+    }
+
+    #[test]
+    fn all_i16_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<i16>().eq((i16::MIN..=i16::MAX).rev()));
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_u16() {
+        cardinality_equals_item_count::<u16>();
+    }
+
+    #[test]
+    fn all_u16_values_are_yielded() {
+        assert!(all::<u16>().eq(u16::MIN..=u16::MAX));
+    }
+
+    #[test]
+    fn all_u16_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<u16>().eq((u16::MIN..=u16::MAX).rev()));
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_unit() {
+        cardinality_equals_item_count::<()>();
+    }
+
+    #[test]
+    fn all_unit_values_are_yielded() {
+        assert!(all::<()>().eq([()]));
+    }
+
+    #[test]
+    fn all_unit_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<()>().eq([()]));
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_infallible() {
+        cardinality_equals_item_count::<Infallible>();
+    }
+
+    #[test]
+    fn all_infallible_values_are_yielded() {
+        assert!(all::<Infallible>().next().is_none());
+    }
+
+    #[test]
+    fn all_infallible_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<Infallible>().next().is_none());
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_tuple_with_infallible() {
+        cardinality_equals_item_count::<(bool, Infallible)>();
+    }
+
+    #[test]
+    fn all_tuple_with_infallible_values_are_yielded() {
+        assert!(all::<(bool, Infallible)>().next().is_none());
+    }
+
+    #[test]
+    fn all_tuple_with_infallible_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<(bool, Infallible)>().next().is_none());
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_singleton() {
+        cardinality_equals_item_count::<(u8,)>();
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_pair() {
+        cardinality_equals_item_count::<(u8, bool)>();
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_triple() {
+        cardinality_equals_item_count::<(bool, u8, bool)>();
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_option() {
+        cardinality_equals_item_count::<Option<u8>>();
     }
 
     #[test]
     fn check_option_items() {
-        assert!(Option::<bool>::into_enum_iter().eq([None, Some(false), Some(true)]));
+        assert!(all::<Option<bool>>().eq([None, Some(false), Some(true)]));
     }
 
     #[test]
     fn tuple_fields_vary_from_right_to_left() {
-        assert!(<(Option<bool>, bool)>::into_enum_iter().eq([
+        assert!(all::<(Option<bool>, bool)>().eq([
             (None, false),
             (None, true),
             (Some(false), false),
