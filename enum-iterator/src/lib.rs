@@ -115,7 +115,7 @@ pub fn reverse_all<T: Sequence>() -> ReverseAll<T> {
     ReverseAll(T::last())
 }
 
-/// Returns the next value of type `T`.
+/// Returns the next value of type `T` or `None` if this was the end.
 ///
 /// # Example
 /// ```
@@ -145,7 +145,7 @@ pub fn next_cycle<T: Sequence>(x: &T) -> Option<T> {
     next(x).or_else(first)
 }
 
-/// Returns the previous value of type `T`.
+/// Returns the previous value of type `T` or `None` if this was the beginning.
 ///
 /// # Example
 /// ```
@@ -358,7 +358,7 @@ pub trait Sequence: Sized {
     /// ```
     const CARDINALITY: usize;
 
-    /// Returns value following `*self`.
+    /// Returns value following `*self` or `None` if this was the end.
     ///
     /// # Example
     /// ```
@@ -371,7 +371,7 @@ pub trait Sequence: Sized {
     /// ```
     fn next(&self) -> Option<Self>;
 
-    /// Returns value preceding `*self`.
+    /// Returns value preceding `*self` or `None` if this was the beginning.
     ///
     /// # Example
     /// ```
