@@ -130,6 +130,21 @@ pub fn next<T: Sequence>(x: &T) -> Option<T> {
     x.next()
 }
 
+/// Returns the next value of type `T` or `T::first()` if this was the end.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{next_cycle, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(next_cycle(&Day::Sunday), Some(Day::Monday));
+/// ```
+pub fn next_cycle<T: Sequence>(x: &T) -> Option<T> {
+    next(x).or_else(first)
+}
+
 /// Returns the previous value of type `T`.
 ///
 /// # Example
@@ -143,6 +158,21 @@ pub fn next<T: Sequence>(x: &T) -> Option<T> {
 /// ```
 pub fn previous<T: Sequence>(x: &T) -> Option<T> {
     x.previous()
+}
+
+/// Returns the previous value of type `T` or `T::last()` if this was the beginning.
+///
+/// # Example
+/// ```
+/// use enum_iterator::{previous_cycle, Sequence};
+///
+/// #[derive(Debug, PartialEq, Sequence)]
+/// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
+///
+/// assert_eq!(previous_cycle(&Day::Monday), Some(Day::Sunday));
+/// ```
+pub fn previous_cycle<T: Sequence>(x: &T) -> Option<T> {
+    previous(x).or_else(last)
 }
 
 /// Returns the first value of type `T`.
