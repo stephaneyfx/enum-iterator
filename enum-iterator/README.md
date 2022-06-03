@@ -53,6 +53,10 @@ assert_eq!(first::<Foo>(), Some(Foo { a: false, b: 0 }));
 assert_eq!(last::<Foo>(), Some(Foo { a: true, b: 255 }));
 ```
 
+# Rust version
+This crate tracks stable Rust. Minor releases may require a newer Rust version. Patch releases
+must not require a newer Rust version.
+
 # Contribute
 All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
 
