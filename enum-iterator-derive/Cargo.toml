@@ -14,6 +14,6 @@ keywords = ["enum", "variants", "iterator", "enumerate", "cardinality"]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1"
-quote = "1"
-syn = { version = "1", features = ["extra-traits"] }
+proc-macro2 = "1.0.39"
+quote = "1.0.18"
+syn = { version = "1.0.96", features = ["extra-traits"] }
