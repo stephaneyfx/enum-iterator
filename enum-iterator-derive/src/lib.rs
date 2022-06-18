@@ -80,6 +80,7 @@ fn derive_for_struct(
     };
     let tokens = quote! {
         impl #impl_generics ::enum_iterator::Sequence for #ty #ty_generics #where_clause {
+            #[allow(clippy::identity_op)]
             const CARDINALITY: usize = #cardinality;
 
             fn next(&self) -> ::core::option::Option<Self> {
@@ -130,6 +131,7 @@ fn derive_for_enum(
     };
     let tokens = quote! {
         impl #impl_generics ::enum_iterator::Sequence for #ty #ty_generics #where_clause {
+            #[allow(clippy::identity_op)]
             const CARDINALITY: usize = #cardinality;
 
             fn next(&self) -> ::core::option::Option<Self> {
@@ -141,11 +143,11 @@ fn derive_for_enum(
             }
 
             fn first() -> ::core::option::Option<Self> {
-                ::core::option::Option::Some(#first)
+                #first
             }
 
             fn last() -> ::core::option::Option<Self> {
-                ::core::option::Option::Some(#last)
+                #last
             }
         }
     };
@@ -209,7 +211,7 @@ where
         ::core::option::Option::None
         #(
             .or_else(|| ::core::option::Option::Some(#inits))
-        )*?
+        )*
     }
 }
 
@@ -241,7 +243,7 @@ where
                 #ty::#id { #assignments } => {
                     #tuple
                         .map(|(#(#bindings,)*)| #ty::#id { #assignments })
-                        .or_else(|| ::core::option::Option::Some(#next))
+                        .or_else(|| #next)
                 }
             }
         },
