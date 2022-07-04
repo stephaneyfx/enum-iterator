@@ -145,3 +145,21 @@ fn reverse_all_works() {
     };
     assert_eq!(reverse_all::<Move>().collect::<Vec<_>>(), expected);
 }
+
+#[derive(Debug, PartialEq, Sequence)]
+enum Empty {}
+
+#[test]
+fn empty_cadinality_is_zero() {
+    assert_eq!(cardinality::<Empty>(), 0);
+}
+
+#[test]
+fn all_values_of_empty_are_yielded() {
+    assert_eq!(all::<Empty>().collect::<Vec<_>>(), Vec::new());
+}
+
+#[test]
+fn all_values_of_empty_are_yielded_in_reverse() {
+    assert_eq!(reverse_all::<Empty>().collect::<Vec<_>>(), Vec::new());
+}

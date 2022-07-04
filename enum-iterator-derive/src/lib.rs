@@ -236,11 +236,12 @@ where
         |(variant, next_variants)| {
             let next = init_enum(ty, next_variants, direction);
             let id = &variant.ident;
+            let destructuring = field_bindings(&variant.fields);
             let assignments = field_assignments(&variant.fields);
             let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
             let tuple = advance_tuple(&bindings, direction);
             quote! {
-                #ty::#id { #assignments } => {
+                #ty::#id { #destructuring } => {
                     #tuple
                         .map(|(#(#bindings,)*)| #ty::#id { #assignments })
                         .or_else(|| #next)
@@ -249,7 +250,7 @@ where
         },
     );
     quote! {
-        match self {
+        match *self {
             #(#arms,)*
         }
     }
@@ -304,6 +305,21 @@ where
         .map(|((i, field), binding)| {
             let field_id = field_id(field, i);
             quote! { #field_id: #binding, }
+        })
+        .collect()
+}
+
+fn field_bindings<'a, I>(fields: I) -> TokenStream
+where
+    I: IntoIterator<Item = &'a Field>,
+{
+    fields
+        .into_iter()
+        .enumerate()
+        .zip(bindings())
+        .map(|((i, field), binding)| {
+            let field_id = field_id(field, i);
+            quote! { #field_id: ref #binding, }
         })
         .collect()
 }
