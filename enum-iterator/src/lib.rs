@@ -64,7 +64,7 @@
 #![deny(warnings)]
 #![no_std]
 
-use core::iter::FusedIterator;
+use core::{iter::FusedIterator, ops::ControlFlow};
 
 pub use enum_iterator_derive::Sequence;
 
@@ -527,6 +527,69 @@ impl<T: Sequence> Sequence for Option<T> {
     }
 }
 
+impl<const N: usize, T: Sequence + Clone> Sequence for [T; N] {
+    const CARDINALITY: usize = {
+        let tc = T::CARDINALITY;
+        let mut c = 1;
+        let mut i = 0;
+        loop {
+            if i == N {
+                break c;
+            }
+            c *= tc;
+            i += 1;
+        }
+    };
+
+    fn next(&self) -> Option<Self> {
+        advance_for_array(self, T::first)
+    }
+
+    fn previous(&self) -> Option<Self> {
+        advance_for_array(self, T::last)
+    }
+
+    fn first() -> Option<Self> {
+        if N == 0 {
+            Some(core::array::from_fn(|_| unreachable!()))
+        } else {
+            let x = T::first()?;
+            Some(core::array::from_fn(|_| x.clone()))
+        }
+    }
+
+    fn last() -> Option<Self> {
+        if N == 0 {
+            Some(core::array::from_fn(|_| unreachable!()))
+        } else {
+            let x = T::last()?;
+            Some(core::array::from_fn(|_| x.clone()))
+        }
+    }
+}
+
+fn advance_for_array<const N: usize, T, R>(a: &[T; N], reset: R) -> Option<[T; N]>
+where
+    T: Sequence + Clone,
+    R: Fn() -> Option<T>,
+{
+    let mut a = a.clone();
+    let keep = a.iter_mut().rev().try_fold((), |_, x| match x.next() {
+        Some(new_x) => {
+            *x = new_x;
+            ControlFlow::Break(true)
+        }
+        None => match reset() {
+            Some(new_x) => {
+                *x = new_x;
+                ControlFlow::Continue(())
+            }
+            None => ControlFlow::Break(false),
+        },
+    });
+    Some(a).filter(|_| matches!(keep, ControlFlow::Break(true)))
+}
+
 macro_rules! impl_seq_advance_for_tuple {
     (
         $this:ident,
@@ -778,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn check_option_items() {
+    fn all_bool_option_items_are_yielded() {
         assert!(all::<Option<bool>>().eq([None, Some(false), Some(true)]));
     }
 
@@ -792,5 +855,60 @@ mod tests {
             (Some(true), false),
             (Some(true), true),
         ]));
+    }
+
+    #[test]
+    fn cardinality_of_empty_array_is_one() {
+        assert_eq!(cardinality::<[u8; 0]>(), 1);
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_empty_array() {
+        cardinality_equals_item_count::<[u8; 0]>();
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_array() {
+        cardinality_equals_item_count::<[u8; 3]>();
+    }
+
+    #[test]
+    fn array_items_vary_from_right_to_left() {
+        assert!(all::<[Option<bool>; 2]>().eq([
+            [None, None],
+            [None, Some(false)],
+            [None, Some(true)],
+            [Some(false), None],
+            [Some(false), Some(false)],
+            [Some(false), Some(true)],
+            [Some(true), None],
+            [Some(true), Some(false)],
+            [Some(true), Some(true)],
+        ]));
+    }
+
+    #[test]
+    fn all_empty_array_items_are_yielded() {
+        assert!(all::<[bool; 0]>().eq([[]]));
+    }
+
+    #[test]
+    fn cardinality_of_empty_infallible_array_is_one() {
+        assert_eq!(cardinality::<[Infallible; 0]>(), 1);
+    }
+
+    #[test]
+    fn cardinality_of_non_empty_infallible_array_is_zero() {
+        assert_eq!(cardinality::<[Infallible; 1]>(), 0);
+    }
+
+    #[test]
+    fn all_empty_infallible_array_items_are_yielded() {
+        assert!(all::<[Infallible; 0]>().eq([[]]));
+    }
+
+    #[test]
+    fn all_non_empty_infallible_array_items_are_yielded() {
+        assert!(all::<[Infallible; 1]>().next().is_none());
     }
 }
