@@ -109,10 +109,8 @@ fn derive_for_enum(
     variants: &Punctuated<Variant, Comma>,
 ) -> Result<TokenStream, syn::Error> {
     let cardinality = enum_cardinality(variants);
-    let first = init_enum(ty, variants, Direction::Forward);
-    let last = init_enum(ty, variants.iter().rev(), Direction::Backward);
     let next_body = advance_enum(ty, variants, Direction::Forward);
-    let previous_body = advance_enum(ty, variants.iter().rev(), Direction::Backward);
+    let previous_body = advance_enum(ty, variants, Direction::Backward);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let where_clause = if generics.params.is_empty() {
         where_clause.cloned()
@@ -128,6 +126,20 @@ fn derive_for_enum(
             .map(WherePredicate::Type),
         );
         Some(clause)
+    };
+    let next_variant_body = next_variant(ty, variants, Direction::Forward);
+    let previous_variant_body = next_variant(ty, variants, Direction::Backward);
+    let (first, last) = if variants.is_empty() {
+        (
+            quote! { ::core::option::Option::None },
+            quote! { ::core::option::Option::None },
+        )
+    } else {
+        let last_index = variants.len() - 1;
+        (
+            quote! { next_variant(0) },
+            quote! { previous_variant(#last_index) },
+        )
     };
     let tokens = quote! {
         impl #impl_generics ::enum_iterator::Sequence for #ty #ty_generics #where_clause {
@@ -150,6 +162,21 @@ fn derive_for_enum(
                 #last
             }
         }
+
+        fn next_variant #impl_generics(
+            mut i: usize,
+        ) -> ::core::option::Option<#ty #ty_generics> #where_clause {
+            #next_variant_body
+        }
+
+        fn previous_variant #impl_generics(
+            mut i: usize,
+        ) -> ::core::option::Option<#ty #ty_generics> #where_clause {
+            #previous_variant_body
+        }
+    };
+    let tokens = quote! {
+        const _: () = { #tokens };
     };
     Ok(tokens)
 }
@@ -196,22 +223,40 @@ fn init_fields(fields: &Fields, direction: Direction) -> TokenStream {
         .collect::<TokenStream>()
 }
 
-fn init_enum<'a, V>(ty: &Ident, variants: V, direction: Direction) -> TokenStream
-where
-    V: IntoIterator<Item = &'a Variant>,
-{
-    let inits = variants.into_iter().map(|variant| {
-        let id = &variant.ident;
-        let init = init_fields(&variant.fields, direction);
+fn next_variant(
+    ty: &Ident,
+    variants: &Punctuated<Variant, Comma>,
+    direction: Direction,
+) -> TokenStream {
+    let advance = match direction {
+        Direction::Forward => {
+            let last_index = variants.len().saturating_sub(1);
+            quote! {
+                if i >= #last_index { break ::core::option::Option::None; } else { i+= 1; }
+            }
+        }
+        Direction::Backward => quote! {
+            if i == 0 { break ::core::option::Option::None; } else { i -= 1; }
+        },
+    };
+    let arms = variants.iter().enumerate().map(|(i, v)| {
+        let id = &v.ident;
+        let init = init_fields(&v.fields, direction);
         quote! {
-            #ty::#id { #init }
+            #i => ::core::option::Option::Some(#ty::#id { #init })
         }
     });
     quote! {
-        ::core::option::Option::None
-        #(
-            .or_else(|| ::core::option::Option::Some(#inits))
-        )*
+        loop {
+            let next = (|| match i {
+                #(#arms,)*
+                _ => ::core::option::Option::None,
+            })();
+            match next {
+                ::core::option::Option::Some(_) => break next,
+                ::core::option::Option::None => #advance,
+            }
+        }
     }
 }
 
@@ -222,36 +267,56 @@ fn advance_struct(ty: &Ident, fields: &Fields, direction: Direction) -> TokenStr
     quote! {
         let #ty { #assignments } = self;
         let (#(#bindings,)*) = #tuple?;
-        Some(#ty { #assignments })
+        ::core::option::Option::Some(#ty { #assignments })
     }
 }
 
-fn advance_enum<'a, V>(ty: &Ident, variants: V, direction: Direction) -> TokenStream
-where
-    V: IntoIterator<Item = &'a Variant>,
-    V::IntoIter: Clone,
-{
-    let mut variants = variants.into_iter();
-    let arms = iter::from_fn(|| variants.next().map(|variant| (variant, variants.clone()))).map(
-        |(variant, next_variants)| {
-            let next = init_enum(ty, next_variants, direction);
-            let id = &variant.ident;
-            let destructuring = field_bindings(&variant.fields);
-            let assignments = field_assignments(&variant.fields);
-            let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
-            let tuple = advance_tuple(&bindings, direction);
-            quote! {
-                #ty::#id { #destructuring } => {
-                    #tuple
-                        .map(|(#(#bindings,)*)| #ty::#id { #assignments })
-                        .or_else(|| #next)
-                }
-            }
-        },
-    );
+fn advance_enum(
+    ty: &Ident,
+    variants: &Punctuated<Variant, Comma>,
+    direction: Direction,
+) -> TokenStream {
+    let arms: Vec<_> = match direction {
+        Direction::Forward => variants
+            .iter()
+            .enumerate()
+            .map(|(i, variant)| advance_enum_arm(ty, direction, i, variant))
+            .collect(),
+        Direction::Backward => variants
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(i, variant)| advance_enum_arm(ty, direction, i, variant))
+            .collect(),
+    };
     quote! {
         match *self {
             #(#arms,)*
+        }
+    }
+}
+
+fn advance_enum_arm(ty: &Ident, direction: Direction, i: usize, variant: &Variant) -> TokenStream {
+    let next = match direction {
+        Direction::Forward => match i.checked_add(1) {
+            Some(next_i) => quote! { .or_else(|| next_variant(#next_i)) },
+            None => quote! {},
+        },
+        Direction::Backward => match i.checked_sub(1) {
+            Some(prev_i) => quote! { .or_else(|| previous_variant(#prev_i)) },
+            None => quote! {},
+        },
+    };
+    let id = &variant.ident;
+    let destructuring = field_bindings(&variant.fields);
+    let assignments = field_assignments(&variant.fields);
+    let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
+    let tuple = advance_tuple(&bindings, direction);
+    quote! {
+        #ty::#id { #destructuring } => {
+            #tuple
+                .map(|(#(#bindings,)*)| #ty::#id { #assignments })
+                #next
         }
     }
 }
@@ -287,7 +352,7 @@ fn advance_tuple(bindings: &[Ident], direction: Direction) -> TokenStream {
                 (::core::clone::Clone::clone(#rev_binding_tail), false)
             };
         )*
-        Some((#(#bindings,)*)).filter(|_| !carry)
+        ::core::option::Option::Some((#(#bindings,)*)).filter(|_| !carry)
     };
     quote! {
         (|| { #body })()
