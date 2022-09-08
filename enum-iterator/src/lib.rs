@@ -527,7 +527,7 @@ impl<T: Sequence> Sequence for Option<T> {
     }
 }
 
-impl<const N: usize, T: Sequence + Clone> Sequence for [T; N] {
+impl<T: Sequence + Clone, const N: usize> Sequence for [T; N] {
     const CARDINALITY: usize = {
         let tc = T::CARDINALITY;
         let mut c = 1;
@@ -568,7 +568,7 @@ impl<const N: usize, T: Sequence + Clone> Sequence for [T; N] {
     }
 }
 
-fn advance_for_array<const N: usize, T, R>(a: &[T; N], reset: R) -> Option<[T; N]>
+fn advance_for_array<T, R, const N: usize>(a: &[T; N], reset: R) -> Option<[T; N]>
 where
     T: Sequence + Clone,
     R: Fn() -> Option<T>,
