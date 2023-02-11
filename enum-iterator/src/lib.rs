@@ -85,6 +85,9 @@ pub const fn cardinality<T: Sequence>() -> usize {
 
 /// Returns an iterator over all values of type `T`.
 ///
+/// Values are yielded in the order defined by [`Sequence::next`], starting with
+/// [`Sequence::first`].
+///
 /// # Example
 /// ```
 /// use enum_iterator::{all, Sequence};
@@ -121,6 +124,8 @@ pub fn reverse_all<T: Sequence>() -> ReverseAll<T> {
 
 /// Returns the next value of type `T` or `None` if this was the end.
 ///
+/// Same as [`Sequence::next`].
+///
 /// # Example
 /// ```
 /// use enum_iterator::{next, Sequence};
@@ -134,7 +139,7 @@ pub fn next<T: Sequence>(x: &T) -> Option<T> {
     x.next()
 }
 
-/// Returns the next value of type `T` or `T::first()` if this was the end.
+/// Returns the next value of type `T` or [`first()`](first) if this was the end.
 ///
 /// # Example
 /// ```
@@ -151,6 +156,8 @@ pub fn next_cycle<T: Sequence>(x: &T) -> Option<T> {
 
 /// Returns the previous value of type `T` or `None` if this was the beginning.
 ///
+/// Same as [`Sequence::previous`].
+///
 /// # Example
 /// ```
 /// use enum_iterator::{previous, Sequence};
@@ -164,7 +171,7 @@ pub fn previous<T: Sequence>(x: &T) -> Option<T> {
     x.previous()
 }
 
-/// Returns the previous value of type `T` or `T::last()` if this was the beginning.
+/// Returns the previous value of type `T` or [`last()`](last) if this was the beginning.
 ///
 /// # Example
 /// ```
@@ -181,6 +188,8 @@ pub fn previous_cycle<T: Sequence>(x: &T) -> Option<T> {
 
 /// Returns the first value of type `T`.
 ///
+/// Same as [`Sequence::first`].
+///
 /// # Example
 /// ```
 /// use enum_iterator::{first, Sequence};
@@ -195,6 +204,8 @@ pub fn first<T: Sequence>() -> Option<T> {
 }
 
 /// Returns the last value of type `T`.
+///
+/// Same as [`Sequence::last`].
 ///
 /// # Example
 /// ```
@@ -263,6 +274,14 @@ impl<T: Sequence> FusedIterator for ReverseAll<T> {}
 /// - Unit structures (i.e. without fields).
 ///
 /// The cardinality (number of values) of the type must not exceed `usize::MAX`.
+///
+/// # Laws
+///
+/// `T: Sequence` implies the following assertions:
+/// - `T::first().and_then(|x| x.previous()).is_none()`
+/// - `T::last().and_then(|x| x.next()).is_none()`
+/// - `T::first().is_none()` ⇔ `T::last().is_none()`
+/// - `std::iter::successors(T::first(), T::next)` must eventually yield `T::last()`.
 ///
 /// # Examples
 /// ## C-like enumeration
@@ -363,6 +382,19 @@ pub trait Sequence: Sized {
     const CARDINALITY: usize;
 
     /// Returns value following `*self` or `None` if this was the end.
+    ///
+    /// Values are yielded in the following order. Comparisons between values are based on their
+    /// relative order as yielded by `next`; an element yielded after another is considered greater.
+    ///
+    /// - For primitive types, in increasing order (same as `Ord`).
+    /// - For arrays and tuples, in lexicographic order of the sequence of their elements.
+    /// - When derived for an enumeration, in variant definition order.
+    /// - When derived for a structure, in lexicographic order of the sequence of its fields taken
+    ///   in definition order.
+    ///
+    /// The order described above is the same as `Ord` if any custom `Sequence` implementation
+    /// follows `Ord` and any enumeration has its variants defined in increasing order of
+    /// discriminant.
     ///
     /// # Example
     /// ```
