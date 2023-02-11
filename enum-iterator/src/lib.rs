@@ -451,11 +451,11 @@ impl Sequence for bool {
     const CARDINALITY: usize = 2;
 
     fn next(&self) -> Option<Self> {
-        (!*self).then(|| true)
+        (!*self).then_some(true)
     }
 
     fn previous(&self) -> Option<Self> {
-        (*self).then(|| false)
+        (*self).then_some(false)
     }
 
     fn first() -> Option<Self> {
