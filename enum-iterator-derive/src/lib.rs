@@ -215,19 +215,26 @@ fn init_value(
     fields: &Fields,
     direction: Direction,
 ) -> TokenStream {
-    let reset = direction.reset();
-    let initialization = repeat(quote! { ::enum_iterator::Sequence::#reset() }).take(fields.len());
-    let assignments = field_assignments(fields);
-    let bindings = bindings().take(fields.len());
     let id = variant.map_or_else(|| quote! { #ty }, |v| quote! { #ty::#v });
-    quote! {{
-        match (#(#initialization,)*) {
-            (#(::core::option::Option::Some(#bindings),)*) => {
-                ::core::option::Option::Some(#id { #assignments })
-            }
-            _ => ::core::option::Option::None,
+    if fields.is_empty() {
+        quote! {
+            ::core::option::Option::Some(#id {})
         }
-    }}
+    } else {
+        let reset = direction.reset();
+        let initialization =
+            repeat(quote! { ::enum_iterator::Sequence::#reset() }).take(fields.len());
+        let assignments = field_assignments(fields);
+        let bindings = bindings().take(fields.len());
+        quote! {{
+            match (#(#initialization,)*) {
+                (#(::core::option::Option::Some(#bindings),)*) => {
+                    ::core::option::Option::Some(#id { #assignments })
+                }
+                _ => ::core::option::Option::None,
+            }
+        }}
+    }
 }
 
 fn next_variant(
@@ -315,18 +322,24 @@ fn advance_enum_arm(ty: &Ident, direction: Direction, i: usize, variant: &Varian
         },
     };
     let id = &variant.ident;
-    let destructuring = field_bindings(&variant.fields);
-    let assignments = field_assignments(&variant.fields);
-    let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
-    let tuple = advance_tuple(&bindings, direction);
-    quote! {
-        #ty::#id { #destructuring } => {
-            let y = #tuple;
-            match y {
-                ::core::option::Option::Some((#(#bindings,)*)) => {
-                    ::core::option::Option::Some(#ty::#id { #assignments })
+    if variant.fields.is_empty() {
+        quote! {
+            #ty::#id {} => #next
+        }
+    } else {
+        let destructuring = field_bindings(&variant.fields);
+        let assignments = field_assignments(&variant.fields);
+        let bindings = bindings().take(variant.fields.len()).collect::<Vec<_>>();
+        let tuple = advance_tuple(&bindings, direction);
+        quote! {
+            #ty::#id { #destructuring } => {
+                let y = #tuple;
+                match y {
+                    ::core::option::Option::Some((#(#bindings,)*)) => {
+                        ::core::option::Option::Some(#ty::#id { #assignments })
+                    }
+                    ::core::option::Option::None => #next,
                 }
-                ::core::option::Option::None => #next,
             }
         }
     }
