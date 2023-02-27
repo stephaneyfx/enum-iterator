@@ -58,8 +58,8 @@ fn derive_for_struct(
     fields: &Fields,
 ) -> Result<TokenStream, syn::Error> {
     let cardinality = tuple_cardinality(fields);
-    let first = init_fields(fields, Direction::Forward);
-    let last = init_fields(fields, Direction::Backward);
+    let first = init_value(ty, None, fields, Direction::Forward);
+    let last = init_value(ty, None, fields, Direction::Backward);
     let next_body = advance_struct(ty, fields, Direction::Forward);
     let previous_body = advance_struct(ty, fields, Direction::Backward);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -92,11 +92,11 @@ fn derive_for_struct(
             }
 
             fn first() -> ::core::option::Option<Self> {
-                ::core::option::Option::Some(#ty { #first })
+                #first
             }
 
             fn last() -> ::core::option::Option<Self> {
-                ::core::option::Option::Some(#ty { #last })
+                #last
             }
         }
     };
@@ -209,18 +209,25 @@ fn field_id(field: &Field, index: usize) -> Member {
         .map_or_else(|| Member::from(index), Member::from)
 }
 
-fn init_fields(fields: &Fields, direction: Direction) -> TokenStream {
+fn init_value(
+    ty: &Ident,
+    variant: Option<&Ident>,
+    fields: &Fields,
+    direction: Direction,
+) -> TokenStream {
     let reset = direction.reset();
-    fields
-        .iter()
-        .enumerate()
-        .map(|(i, field)| {
-            let id = field_id(field, i);
-            quote! {
-                #id: ::enum_iterator::Sequence::#reset()?,
+    let initialization = repeat(quote! { ::enum_iterator::Sequence::#reset() }).take(fields.len());
+    let assignments = field_assignments(fields);
+    let bindings = bindings().take(fields.len());
+    let id = variant.map_or_else(|| quote! { #ty }, |v| quote! { #ty::#v });
+    quote! {{
+        match (#(#initialization,)*) {
+            (#(::core::option::Option::Some(#bindings),)*) => {
+                ::core::option::Option::Some(#id { #assignments })
             }
-        })
-        .collect::<TokenStream>()
+            _ => ::core::option::Option::None,
+        }
+    }}
 }
 
 fn next_variant(
@@ -241,17 +248,17 @@ fn next_variant(
     };
     let arms = variants.iter().enumerate().map(|(i, v)| {
         let id = &v.ident;
-        let init = init_fields(&v.fields, direction);
+        let init = init_value(ty, Some(id), &v.fields, direction);
         quote! {
-            #i => ::core::option::Option::Some(#ty::#id { #init })
+            #i => #init
         }
     });
     quote! {
         loop {
-            let next = (|| match i {
+            let next = match i {
                 #(#arms,)*
                 _ => ::core::option::Option::None,
-            })();
+            };
             match next {
                 ::core::option::Option::Some(_) => break next,
                 ::core::option::Option::None => #advance,
@@ -299,12 +306,12 @@ fn advance_enum(
 fn advance_enum_arm(ty: &Ident, direction: Direction, i: usize, variant: &Variant) -> TokenStream {
     let next = match direction {
         Direction::Forward => match i.checked_add(1) {
-            Some(next_i) => quote! { .or_else(|| next_variant(#next_i)) },
-            None => quote! {},
+            Some(next_i) => quote! { next_variant(#next_i) },
+            None => quote! { ::core::option::Option::None },
         },
         Direction::Backward => match i.checked_sub(1) {
-            Some(prev_i) => quote! { .or_else(|| previous_variant(#prev_i)) },
-            None => quote! {},
+            Some(prev_i) => quote! { previous_variant(#prev_i) },
+            None => quote! { ::core::option::Option::None },
         },
     };
     let id = &variant.ident;
@@ -314,9 +321,13 @@ fn advance_enum_arm(ty: &Ident, direction: Direction, i: usize, variant: &Varian
     let tuple = advance_tuple(&bindings, direction);
     quote! {
         #ty::#id { #destructuring } => {
-            #tuple
-                .map(|(#(#bindings,)*)| #ty::#id { #assignments })
-                #next
+            let y = #tuple;
+            match y {
+                ::core::option::Option::Some((#(#bindings,)*)) => {
+                    ::core::option::Option::Some(#ty::#id { #assignments })
+                }
+                ::core::option::Option::None => #next,
+            }
         }
     }
 }
@@ -332,8 +343,8 @@ fn advance_tuple(bindings: &[Ident], direction: Direction) -> TokenStream {
     let rev_binding_head = match rev_binding_head {
         Some(head) => quote! {
             let (#head, carry) = match ::enum_iterator::Sequence::#advance(#head) {
-                ::core::option::Option::Some(#head) => (#head, false),
-                ::core::option::Option::None => (::enum_iterator::Sequence::#reset()?, true),
+                ::core::option::Option::Some(#head) => (::core::option::Option::Some(#head), false),
+                ::core::option::Option::None => (::enum_iterator::Sequence::#reset(), true),
             };
         },
         None => quote! {
@@ -345,17 +356,31 @@ fn advance_tuple(bindings: &[Ident], direction: Direction) -> TokenStream {
         #(
             let (#rev_binding_tail, carry) = if carry {
                 match ::enum_iterator::Sequence::#advance(#rev_binding_tail) {
-                    ::core::option::Option::Some(#rev_binding_tail) => (#rev_binding_tail, false),
-                    ::core::option::Option::None => (::enum_iterator::Sequence::#reset()?, true),
+                    ::core::option::Option::Some(#rev_binding_tail) => {
+                        (::core::option::Option::Some(#rev_binding_tail), false)
+                    }
+                    ::core::option::Option::None => (::enum_iterator::Sequence::#reset(), true),
                 }
             } else {
-                (::core::clone::Clone::clone(#rev_binding_tail), false)
+                (
+                    ::core::option::Option::Some(::core::clone::Clone::clone(#rev_binding_tail)),
+                    false,
+                )
             };
         )*
-        ::core::option::Option::Some((#(#bindings,)*)).filter(|_| !carry)
+        if carry {
+            ::core::option::Option::None
+        } else {
+            match (#(#bindings,)*) {
+                (#(::core::option::Option::Some(#bindings),)*) => {
+                    ::core::option::Option::Some((#(#bindings,)*))
+                }
+                _ => ::core::option::Option::None,
+            }
+        }
     };
     quote! {
-        (|| { #body })()
+        { #body }
     }
 }
 
