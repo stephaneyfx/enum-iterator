@@ -163,3 +163,21 @@ fn all_values_of_empty_are_yielded() {
 fn all_values_of_empty_are_yielded_in_reverse() {
     assert_eq!(reverse_all::<Empty>().collect::<Vec<_>>(), Vec::new());
 }
+
+#[derive(Debug, PartialEq, Sequence)]
+struct Unit;
+
+#[test]
+fn unit_cardinality_is_one() {
+    assert_eq!(cardinality::<Unit>(), 1);
+}
+
+#[test]
+fn all_values_of_unit_are_yielded() {
+    assert_eq!(all::<Unit>().collect::<Vec<_>>(), vec![Unit]);
+}
+
+#[test]
+fn all_values_of_unit_are_yielded_in_reverse() {
+    assert_eq!(reverse_all::<Unit>().collect::<Vec<_>>(), vec![Unit]);
+}
