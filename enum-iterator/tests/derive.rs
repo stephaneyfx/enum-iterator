@@ -1,4 +1,4 @@
-// Copyright (C) 2018-2022 Stephane Raux. Distributed under the 0BSD license.
+// Copyright (c) 2018-2022 Stephane Raux. Distributed under the MIT license.
 
 use enum_iterator::{all, cardinality, reverse_all, Sequence};
 use std::{convert::Infallible, iter::once};
