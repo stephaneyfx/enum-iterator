@@ -258,6 +258,8 @@ impl<T: Sequence> FusedIterator for ReverseAll<T> {}
 
 /// Trait to iterate over the values of a type.
 ///
+/// The [crate root](crate) defines useful functions to work with types implementing `Sequence`.
+///
 /// # Derivation
 ///
 /// `Sequence` can be derived for `enum` and `struct` types. Specifically, it can be derived
