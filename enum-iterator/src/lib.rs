@@ -572,7 +572,7 @@ impl<T: Sequence> Sequence for Option<T> {
 
     fn next(&self) -> Option<Self> {
         match self {
-            None => Some(T::first()),
+            None => T::first().map(Some),
             Some(x) => x.next().map(Some),
         }
     }
@@ -932,6 +932,21 @@ mod tests {
     #[test]
     fn all_bool_option_items_are_yielded() {
         assert!(all::<Option<bool>>().eq([None, Some(false), Some(true)]));
+    }
+
+    #[test]
+    fn all_bool_option_items_are_yielded_in_reverse() {
+        assert!(reverse_all::<Option<bool>>().eq([Some(true), Some(false), None]));
+    }
+
+    #[test]
+    fn all_infallible_option_items_are_yielded() {
+        assert!(all::<Option<Infallible>>().eq([None]));
+    }
+
+    #[test]
+    fn all_infallible_option_items_are_yielded_in_reverse() {
+        assert!(reverse_all::<Option<Infallible>>().eq([None]));
     }
 
     #[test]
