@@ -64,7 +64,7 @@
 #![deny(warnings)]
 #![no_std]
 
-use core::{iter::FusedIterator, ops::ControlFlow};
+use core::{cmp::Ordering, iter::FusedIterator, ops::ControlFlow, task::Poll};
 
 pub use enum_iterator_derive::Sequence;
 
@@ -538,6 +538,35 @@ impl Sequence for core::convert::Infallible {
     }
 }
 
+impl Sequence for Ordering {
+    const CARDINALITY: usize = 3;
+
+    fn next(&self) -> Option<Self> {
+        int_to_ordering(*self as i8 + 1)
+    }
+
+    fn previous(&self) -> Option<Self> {
+        int_to_ordering(*self as i8 - 1)
+    }
+
+    fn first() -> Option<Self> {
+        Some(Ordering::Less)
+    }
+
+    fn last() -> Option<Self> {
+        Some(Ordering::Greater)
+    }
+}
+
+fn int_to_ordering(i: i8) -> Option<Ordering> {
+    match i {
+        -1 => Some(Ordering::Less),
+        0 => Some(Ordering::Equal),
+        1 => Some(Ordering::Greater),
+        _ => None,
+    }
+}
+
 impl<T: Sequence> Sequence for Option<T> {
     const CARDINALITY: usize = T::CARDINALITY + 1;
 
@@ -558,6 +587,32 @@ impl<T: Sequence> Sequence for Option<T> {
 
     fn last() -> Option<Self> {
         Some(T::last())
+    }
+}
+
+impl<T: Sequence> Sequence for Poll<T> {
+    const CARDINALITY: usize = T::CARDINALITY + 1;
+
+    fn next(&self) -> Option<Self> {
+        match self {
+            Poll::Ready(x) => x.next().map(Poll::Ready).or(Some(Poll::Pending)),
+            Poll::Pending => None,
+        }
+    }
+
+    fn previous(&self) -> Option<Self> {
+        match self {
+            Poll::Ready(x) => x.previous().map(Poll::Ready),
+            Poll::Pending => T::last().map(Poll::Ready),
+        }
+    }
+
+    fn first() -> Option<Self> {
+        T::first().map(Poll::Ready).or(Some(Poll::Pending))
+    }
+
+    fn last() -> Option<Self> {
+        Some(Poll::Pending)
     }
 }
 
@@ -728,7 +783,7 @@ impl_sequence_for_tuples!(
 #[cfg(test)]
 mod tests {
     use crate::{all, cardinality, reverse_all, Sequence};
-    use core::convert::Infallible;
+    use core::{cmp::Ordering, convert::Infallible, task::Poll};
 
     fn cardinality_equals_item_count<T: Sequence>() {
         assert_eq!(cardinality::<T>(), all::<T>().count());
@@ -877,6 +932,50 @@ mod tests {
     #[test]
     fn all_bool_option_items_are_yielded() {
         assert!(all::<Option<bool>>().eq([None, Some(false), Some(true)]));
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_ordering() {
+        cardinality_equals_item_count::<Ordering>();
+    }
+
+    #[test]
+    fn all_ordering_values_are_yielded() {
+        assert!(all::<Ordering>().eq([Ordering::Less, Ordering::Equal, Ordering::Greater]));
+    }
+
+    #[test]
+    fn all_ordering_values_are_yielded_in_reverse() {
+        assert!(reverse_all::<Ordering>().eq([Ordering::Greater, Ordering::Equal, Ordering::Less]));
+    }
+
+    #[test]
+    fn cardinality_equals_item_count_for_poll() {
+        cardinality_equals_item_count::<Poll<u8>>();
+    }
+
+    #[test]
+    fn all_bool_poll_items_are_yielded() {
+        assert!(all::<Poll<bool>>().eq([Poll::Ready(false), Poll::Ready(true), Poll::Pending]));
+    }
+
+    #[test]
+    fn all_bool_poll_items_are_yielded_in_reverse() {
+        assert!(reverse_all::<Poll<bool>>().eq([
+            Poll::Pending,
+            Poll::Ready(true),
+            Poll::Ready(false),
+        ]));
+    }
+
+    #[test]
+    fn all_infallible_poll_items_are_yielded() {
+        assert!(all::<Poll<Infallible>>().eq([Poll::Pending]));
+    }
+
+    #[test]
+    fn all_infallible_poll_items_are_yielded_in_reverse() {
+        assert!(reverse_all::<Poll<Infallible>>().eq([Poll::Pending]));
     }
 
     #[test]
