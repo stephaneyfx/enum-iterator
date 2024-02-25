@@ -148,10 +148,10 @@ pub fn next<T: Sequence>(x: &T) -> Option<T> {
 /// #[derive(Debug, PartialEq, Sequence)]
 /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 ///
-/// assert_eq!(next_cycle(&Day::Sunday), Some(Day::Monday));
+/// assert_eq!(next_cycle(&Day::Sunday), Day::Monday);
 /// ```
-pub fn next_cycle<T: Sequence>(x: &T) -> Option<T> {
-    next(x).or_else(first)
+pub fn next_cycle<T: Sequence>(x: &T) -> T {
+    next(x).or_else(first).expect("Sequence::first returned None for inhabited type")
 }
 
 /// Returns the previous value of type `T` or `None` if this was the beginning.
@@ -180,10 +180,10 @@ pub fn previous<T: Sequence>(x: &T) -> Option<T> {
 /// #[derive(Debug, PartialEq, Sequence)]
 /// enum Day { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday }
 ///
-/// assert_eq!(previous_cycle(&Day::Monday), Some(Day::Sunday));
+/// assert_eq!(previous_cycle(&Day::Monday), Day::Sunday);
 /// ```
-pub fn previous_cycle<T: Sequence>(x: &T) -> Option<T> {
-    previous(x).or_else(last)
+pub fn previous_cycle<T: Sequence>(x: &T) -> T {
+    previous(x).or_else(last).expect("Sequence::last returned None for inhabited type")
 }
 
 /// Returns the first value of type `T`.
@@ -284,6 +284,9 @@ impl<T: Sequence> FusedIterator for ReverseAll<T> {}
 /// - `T::last().and_then(|x| x.next()).is_none()`
 /// - `T::first().is_none()` ⇔ `T::last().is_none()`
 /// - `std::iter::successors(T::first(), T::next)` must eventually yield `T::last()`.
+/// - If `T` is inhabited, `T::first().is_some()`.
+///
+/// If a manual implementation of `Sequence` violates any of these laws, the functions at the crate root may misbehave, including panicking.
 ///
 /// # Examples
 /// ## C-like enumeration

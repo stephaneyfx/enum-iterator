@@ -1,6 +1,6 @@
 [package]
 name = "enum-iterator"
-version = "1.5.0"
+version = "2.0.0"
 authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
 edition = "2021"
 description = "Tools to iterate over all values of a type (e.g. all variants of an enumeration)"
