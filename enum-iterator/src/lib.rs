@@ -151,7 +151,9 @@ pub fn next<T: Sequence>(x: &T) -> Option<T> {
 /// assert_eq!(next_cycle(&Day::Sunday), Day::Monday);
 /// ```
 pub fn next_cycle<T: Sequence>(x: &T) -> T {
-    next(x).or_else(first).expect("Sequence::first returned None for inhabited type")
+    next(x)
+        .or_else(first)
+        .expect("Sequence::first returned None for inhabited type")
 }
 
 /// Returns the previous value of type `T` or `None` if this was the beginning.
@@ -183,7 +185,9 @@ pub fn previous<T: Sequence>(x: &T) -> Option<T> {
 /// assert_eq!(previous_cycle(&Day::Monday), Day::Sunday);
 /// ```
 pub fn previous_cycle<T: Sequence>(x: &T) -> T {
-    previous(x).or_else(last).expect("Sequence::last returned None for inhabited type")
+    previous(x)
+        .or_else(last)
+        .expect("Sequence::last returned None for inhabited type")
 }
 
 /// Returns the first value of type `T`.
