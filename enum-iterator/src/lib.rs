@@ -1,9 +1,9 @@
-// Copyright (c) 2018-2022 Stephane Raux. Distributed under the MIT license.
+// Copyright (c) 2018-2022 Stephane Raux. Distributed under the 0BSD license.
 
 //! # Overview
 //! - [📦 crates.io](https://crates.io/crates/enum-iterator)
 //! - [📖 Documentation](https://docs.rs/enum-iterator)
-//! - [⚖ MIT license](https://spdx.org/licenses/MIT.html)
+//! - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 //!
 //! Tools to iterate over the values of a type.
 //!
@@ -58,7 +58,7 @@
 //! must not require a newer Rust version.
 //!
 //! # Contribute
-//! All contributions shall be licensed under the [MIT license](https://spdx.org/licenses/MIT.html).
+//! All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
 
 #![deny(missing_docs)]
 #![deny(warnings)]

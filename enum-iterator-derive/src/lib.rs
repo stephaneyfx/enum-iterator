@@ -1,16 +1,16 @@
-// Copyright (c) 2018-2022 Stephane Raux. Distributed under the MIT license.
+// Copyright (c) 2018-2022 Stephane Raux. Distributed under the 0BSD license.
 
 //! # Overview
 //! - [📦 crates.io](https://crates.io/crates/enum-iterator-derive)
 //! - [📖 Documentation](https://docs.rs/enum-iterator-derive)
-//! - [⚖ MIT license](https://spdx.org/licenses/MIT.html)
+//! - [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 //!
 //! Procedural macro to derive `Sequence`.
 //!
 //! See crate [`enum-iterator`](https://docs.rs/enum-iterator) for details.
 //!
 //! # Contribute
-//! All contributions shall be licensed under the [MIT license](https://spdx.org/licenses/MIT.html).
+//! All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
 
 #![recursion_limit = "128"]
 #![deny(warnings)]

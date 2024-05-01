@@ -3,7 +3,7 @@
 # Overview
 - [📦 crates.io](https://crates.io/crates/enum-iterator)
 - [📖 Documentation](https://docs.rs/enum-iterator)
-- [⚖ MIT license](https://spdx.org/licenses/MIT.html)
+- [⚖ 0BSD license](https://spdx.org/licenses/0BSD.html)
 
 Tools to iterate over the values of a type.
 
@@ -58,6 +58,6 @@ This crate tracks stable Rust. Minor releases may require a newer Rust version. 
 must not require a newer Rust version.
 
 # Contribute
-All contributions shall be licensed under the [MIT license](https://spdx.org/licenses/MIT.html).
+All contributions shall be licensed under the [0BSD license](https://spdx.org/licenses/0BSD.html).
 
 <!-- cargo-sync-readme end -->
