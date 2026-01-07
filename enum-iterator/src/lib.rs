@@ -250,9 +250,18 @@ impl<T: Sequence> Iterator for All<T> {
         self.0 = item.next();
         Some(item)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (T::CARDINALITY, Some(T::CARDINALITY))
+    }
 }
 
 impl<T: Sequence> FusedIterator for All<T> {}
+impl<T: Sequence> ExactSizeIterator for All<T> {
+    fn len(&self) -> usize {
+        T::CARDINALITY
+    }
+}
 
 /// Iterator over the values of type `T` in reverse order.
 ///
@@ -268,9 +277,18 @@ impl<T: Sequence> Iterator for ReverseAll<T> {
         self.0 = item.previous();
         Some(item)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (T::CARDINALITY, Some(T::CARDINALITY))
+    }
 }
 
 impl<T: Sequence> FusedIterator for ReverseAll<T> {}
+impl<T: Sequence> ExactSizeIterator for ReverseAll<T> {
+    fn len(&self) -> usize {
+        T::CARDINALITY
+    }
+}
 
 /// Trait to iterate over the values of a type.
 ///
