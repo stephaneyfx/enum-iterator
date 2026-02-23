@@ -181,3 +181,27 @@ fn all_values_of_unit_are_yielded() {
 fn all_values_of_unit_are_yielded_in_reverse() {
     assert_eq!(reverse_all::<Unit>().collect::<Vec<_>>(), vec![Unit]);
 }
+
+#[derive(Debug, PartialEq, Sequence)]
+enum EnumWithIgnored {
+    One,
+    Two,
+    #[enum_iterator(ignore)]
+    Custom(String),
+}
+
+#[test]
+fn enum_variant_can_be_ignored() {
+    assert_eq!(
+        all::<EnumWithIgnored>().collect::<Vec<_>>(),
+        vec![EnumWithIgnored::One, EnumWithIgnored::Two]
+    );
+    assert!(!all::<EnumWithIgnored>()
+        .collect::<Vec<_>>()
+        .contains(&EnumWithIgnored::Custom(String::default())));
+}
+
+#[test]
+fn enum_cardinality_excludes_ignored() {
+    assert_eq!(cardinality::<EnumWithIgnored>(), 2);
+}
