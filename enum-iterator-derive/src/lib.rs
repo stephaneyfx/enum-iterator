@@ -25,9 +25,9 @@ use std::{
     iter::{self, once, repeat, repeat_n},
 };
 use syn::{
-    punctuated::Punctuated, token::Comma, DeriveInput, Field, Fields, Generics, Ident, Member,
-    Path, PathSegment, PredicateType, TraitBound, TraitBoundModifier, Type, TypeParamBound,
-    Variant, WhereClause, WherePredicate,
+    punctuated::Punctuated, token::Comma, Attribute, DeriveInput, Field, Fields, Generics, Ident,
+    Member, Meta, Path, PathSegment, PredicateType, TraitBound, TraitBoundModifier, Type,
+    TypeParamBound, Variant, WhereClause, WherePredicate,
 };
 
 /// Derives `Sequence`.
@@ -167,9 +167,14 @@ fn derive_for_enum(
         clause.predicates.extend(
             trait_bounds(
                 &options.crate_path,
-                group_type_requirements(variants.iter().flat_map(|variant| {
-                    variant.fields.iter().rev().zip(tuple_type_requirements())
-                })),
+                group_type_requirements(
+                    variants
+                        .iter()
+                        .filter(|variant| !is_ignored(&variant.attrs))
+                        .flat_map(|variant| {
+                            variant.fields.iter().rev().zip(tuple_type_requirements())
+                        }),
+                ),
             )
             .map(WherePredicate::Type),
         );
@@ -234,6 +239,7 @@ fn derive_for_enum(
 fn enum_cardinality(crate_path: &Path, variants: &Punctuated<Variant, Comma>) -> TokenStream {
     let terms = variants
         .iter()
+        .filter(|variant| !is_ignored(&variant.attrs))
         .map(|variant| tuple_cardinality(crate_path, &variant.fields));
     quote! {
         #((#terms) +)* 0
@@ -306,7 +312,11 @@ fn next_variant(
     };
     let arms = variants.iter().enumerate().map(|(i, v)| {
         let id = &v.ident;
-        let init = init_value(crate_path, ty, Some(id), &v.fields, direction);
+        let init = if is_ignored(&v.attrs) {
+            quote! { ::core::option::Option::None }
+        } else {
+            init_value(crate_path, ty, Some(id), &v.fields, direction)
+        };
         quote! {
             #i => #init
         }
@@ -351,13 +361,37 @@ fn advance_enum(
         Direction::Forward => variants
             .iter()
             .enumerate()
-            .map(|(i, variant)| advance_enum_arm(crate_path, ty, direction, i, variant))
+            .map(|(i, variant)| {
+                let i_next = {
+                    let mut i_next = i;
+                    while variants
+                        .get(i_next)
+                        .is_some_and(|variant| is_ignored(&variant.attrs))
+                    {
+                        i_next += 1;
+                    }
+                    i_next
+                };
+                advance_enum_arm(crate_path, ty, direction, i_next, variant)
+            })
             .collect(),
         Direction::Backward => variants
             .iter()
             .enumerate()
             .rev()
-            .map(|(i, variant)| advance_enum_arm(crate_path, ty, direction, i, variant))
+            .map(|(i, variant)| {
+                let i_prev = {
+                    let mut i_prev = i;
+                    while variants
+                        .get(i_prev)
+                        .is_some_and(|variant| is_ignored(&variant.attrs))
+                    {
+                        i_prev = i_prev.saturating_sub(1);
+                    }
+                    i_prev
+                };
+                advance_enum_arm(crate_path, ty, direction, i_prev, variant)
+            })
             .collect(),
     };
     quote! {
@@ -389,6 +423,10 @@ fn advance_enum_arm(
         quote! {
             #ty::#id {} => #next
         }
+    } else if is_ignored(&variant.attrs) {
+        quote! {
+            #ty::#id { .. } => { ::core::option::Option::None }
+        }
     } else {
         let destructuring = field_bindings(&variant.fields);
         let assignments = field_assignments(&variant.fields);
@@ -406,6 +444,15 @@ fn advance_enum_arm(
             }
         }
     }
+}
+
+/// Returns whether the `#[enum_iterator(ignore)]` attribute exists.
+fn is_ignored(field_or_variant_attrs: &[Attribute]) -> bool {
+    field_or_variant_attrs.iter().any(|attr| {
+        matches!(&attr.meta, Meta::List(meta_list)
+        if meta_list.path.is_ident("enum_iterator") &&
+        matches!(meta_list.parse_args::<Ident>(), Ok(ident) if ident == "ignore"))
+    })
 }
 
 fn advance_tuple(crate_path: &Path, bindings: &[Ident], direction: Direction) -> TokenStream {
